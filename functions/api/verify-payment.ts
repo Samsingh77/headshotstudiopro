@@ -1,5 +1,23 @@
 import { createClient } from "@supabase/supabase-js";
-import crypto from "node:crypto";
+
+async function hmacSha256(secret: string, message: string) {
+  const encoder = new TextEncoder();
+  const keyData = encoder.encode(secret);
+  const messageData = encoder.encode(message);
+
+  const key = await crypto.subtle.importKey(
+    "raw",
+    keyData,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+
+  const signature = await crypto.subtle.sign("HMAC", key, messageData);
+  return Array.from(new Uint8Array(signature))
+    .map(b => b.toString(16).padStart(2, "0"))
+    .join("");
+}
 
 export async function onRequest(context: any) {
   const { request, env } = context;
@@ -13,9 +31,8 @@ export async function onRequest(context: any) {
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature, user_id, tokensToAdd, amount } = body;
 
     const secret = env.RAZORPAY_KEY_SECRET || "";
-    const hmac = crypto.createHmac("sha256", secret);
-    hmac.update(razorpay_order_id + "|" + razorpay_payment_id);
-    const generatedSignature = hmac.digest("hex");
+    // Verify signature using native Web Crypto (Cloudflare compatible)
+    const generatedSignature = await hmacSha256(secret, razorpay_order_id + "|" + razorpay_payment_id);
 
     if (generatedSignature !== razorpay_signature) {
       return new Response(JSON.stringify({ status: "failure", message: "Verification failed" }), {
