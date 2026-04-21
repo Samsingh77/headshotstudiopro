@@ -2495,24 +2495,27 @@ const Dashboard: React.FC<{
                     <div className="space-y-3 mb-8">
                       <div className="flex justify-between items-center p-4 rounded-xl bg-white/5 border border-white/10">
                         <div className="flex flex-col">
-                          <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-1">Total Capacity</p>
+                          <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-1">Max Utilization</p>
                           <p className="text-sm font-bold text-white flex items-center gap-2">
-                            <span>{previewCapacity} <span className="text-[10px] font-medium text-slate-400 uppercase">Previews</span></span>
-                            <span className="text-slate-600 text-xs">— OR —</span>
-                            <span>{hdCapacity} <span className="text-[10px] font-medium text-slate-400 uppercase">HD Portraits</span></span>
+                             <span>{previewCapacity} <span className="text-[10px] font-medium text-slate-400 uppercase">Previews</span></span>
+                             <span className="text-slate-600 text-xs">— OR —</span>
+                             <span>{hdCapacity} <span className="text-[10px] font-medium text-slate-400 uppercase">HD Portraits</span></span>
                           </p>
                         </div>
                         <div className={`h-2 w-2 rounded-full animate-pulse ${(previewCapacity + hdCapacity) > 0 ? 'bg-emerald-500' : 'bg-red-500'}`} />
                       </div>
 
-                      {tokens >= 5 && (
+                      {tokens > 0 && (
                         <div className="p-3 bg-studio-emerald/10 border border-studio-emerald/20 rounded-lg">
                           <p className="text-[9px] font-black text-studio-emerald uppercase tracking-tighter mb-1.5 flex items-center gap-1.5">
                             <Zap className="w-3 h-3" />
-                            Optimal Credit Utilization
+                            Smart Credit Usage
                           </p>
                           <p className="text-[11px] font-medium text-slate-300 leading-tight">
-                            Your balance allows for <span className="text-white font-bold">{mixedHD} HD</span> {mixedHD === 1 ? 'portrait' : 'portraits'} <span className="text-white/40 font-bold mx-0.5">PLUS</span> <span className="text-white font-bold">{mixedPre}</span> additional {mixedPre === 1 ? 'preview' : 'previews'}.
+                            {mixedPre > 0 
+                              ? `You can generate ${mixedHD > 0 ? `${mixedHD} HD ${mixedHD === 1 ? 'portrait' : 'portraits'} AND ` : ''}${mixedPre} additional ${mixedPre === 1 ? 'preview' : 'previews'}.`
+                              : `Your balance allows for ${mixedHD} HD ${mixedHD === 1 ? 'portrait' : 'portraits'}. (Each HD uses 5 credits).`
+                            }
                           </p>
                         </div>
                       )}
