@@ -1,0 +1,138 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+*, ::before, ::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  overflow-x: hidden !important;
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+#root {
+  overflow-x: hidden !important;
+  width: 100%;
+  max-width: 100%;
+  position: relative;
+}
+
+/* Aggressive scrollbar hiding for horizontal axis */
+::-webkit-scrollbar:horizontal {
+  display: none !important;
+  height: 0 !important;
+}
+
+* {
+  scrollbar-width: thin;
+}
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&family=Outfit:wght@100..900&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Outfit", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* Premium Professional Palette - Light Theme */
+  --color-studio-emerald: #10b981;
+  --color-studio-emerald-light: #ecfdf5;
+  --color-studio-emerald-dark: #059669;
+  --color-studio-emerald-accent: #34d399;
+  
+  --color-studio-bg: #FFFFFF;
+  --color-studio-surface: #F9FAFB;
+  --color-studio-card: #FFFFFF;
+  
+  --color-studio-text-primary: #111827;
+  --color-studio-text-secondary: #6B7280;
+  --color-studio-text-muted: #94A3B8;
+  
+  --color-studio-border: #E5E7EB;
+  --color-studio-border-light: #F1F5F9;
+
+  --shadow-premium: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+  --shadow-premium-hover: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+
+  @keyframes pulse-slow {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.8; }
+  }
+}
+
+@layer utilities {
+  .animate-pulse-slow {
+    animation: pulse-slow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+}
+
+@layer base {
+  body {
+    @apply bg-studio-bg text-studio-text-primary antialiased selection:bg-studio-emerald/20 m-0 p-0;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply tracking-tight font-display font-bold text-studio-text-primary;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 h-[42px] px-4 py-2.5 rounded-[11px] bg-studio-emerald text-white font-semibold text-[14px] transition-all hover:bg-studio-emerald-dark hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none shadow-sm;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 h-[42px] px-4 py-2.5 rounded-[11px] bg-white border border-studio-border text-studio-text-primary font-semibold text-[14px] transition-all hover:bg-studio-surface hover:border-studio-emerald/30 active:scale-[0.98] disabled:opacity-50 shadow-sm;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 h-[42px] px-4 py-2.5 rounded-[11px] bg-transparent text-studio-text-secondary font-semibold text-[14px] transition-all hover:bg-studio-surface hover:text-studio-text-primary active:scale-[0.98] disabled:opacity-50;
+  }
+
+  .glass-card {
+    @apply bg-white border border-studio-border shadow-premium;
+  }
+
+  .input-field {
+    @apply w-full px-4 py-2.5 h-[42px] rounded-[11px] bg-white border border-studio-border text-sm font-medium transition-all focus:border-studio-emerald focus:ring-4 focus:ring-studio-emerald/5 outline-none placeholder:text-studio-text-muted;
+  }
+
+  .section-container {
+    @apply max-w-7xl mx-auto px-6 lg:px-12;
+  }
+
+  .heading-xl {
+    @apply text-5xl lg:text-7xl font-bold tracking-tight leading-[1.1] text-studio-text-primary;
+  }
+
+  .heading-lg {
+    @apply text-3xl lg:text-4xl font-bold tracking-tight text-studio-text-primary;
+  }
+
+  .text-premium {
+    @apply text-lg text-studio-text-secondary leading-relaxed;
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-200 rounded-full hover:bg-slate-300 transition-colors;
+}
+

@@ -1,0 +1,345 @@
+const LandingPage: React.FC<{ 
+  onGetStarted: () => void; 
+  onOpenFAQ: (tab?: 'how' | 'faq' | 'support') => void; 
+  formatPrice: (usd: number) => string;
+  currency: 'USD' | 'INR' | 'EUR' | 'GBP';
+  setCurrency: (c: 'USD' | 'INR' | 'EUR' | 'GBP') => void;
+  setIsSamplesOpen: (open: boolean) => void;
+  setView: (view: 'landing' | 'auth' | 'app') => void;
+}> = ({ onGetStarted, onOpenFAQ, formatPrice, currency, setCurrency, setIsSamplesOpen, setView }) => {
+  const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
+
+  return (
+    <div className="min-h-screen bg-slate-900 text-white font-sans selection:bg-indigo-500/30 overflow-x-hidden">
+      {/* Header */}
+      <header className="fixed top-0 left-0 right-0 z-[100] bg-slate-900/80 backdrop-blur-xl border-b border-white/10 px-4 lg:px-8 py-4">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3 cursor-pointer group" onClick={() => setView('landing')}>
+            <div className="bg-indigo-600 w-8 h-8 rounded-xl flex items-center justify-center text-white shadow-lg shadow-indigo-500/20 group-hover:scale-105 transition-transform">
+              <Camera className="w-4 h-4" />
+            </div>
+            <span className="text-xl font-bold tracking-tight text-white">
+              Headshot<span className="text-indigo-400">Studio</span>Pro
+            </span>
+          </div>
+          
+          <nav className="hidden md:flex items-center gap-8">
+            <button onClick={() => document.getElementById('examples')?.scrollIntoView({ behavior: 'smooth' })} className="text-sm font-medium text-slate-300 hover:text-white transition-colors">Examples</button>
+            <button onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })} className="text-sm font-medium text-slate-300 hover:text-white transition-colors">How it Works</button>
+            <button onClick={() => document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth' })} className="text-sm font-medium text-slate-300 hover:text-white transition-colors">Pricing</button>
+          </nav>
+
+          <button 
+            onClick={onGetStarted} 
+            className="px-5 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold shadow-lg shadow-indigo-500/20 hover:bg-indigo-500 hover:scale-[1.02] transition-all active:scale-[0.98]"
+          >
+            Generate
+          </button>
+        </div>
+      </header>
+
+      {/* Hero Section */}
+      <section className="pt-32 pb-20 lg:pt-40 lg:pb-32 px-4 lg:px-8 max-w-7xl mx-auto">
+        <div className="grid lg:grid-cols-2 gap-12 lg:gap-8 items-center">
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            className="space-y-8 text-center lg:text-left"
+          >
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-semibold tracking-wide uppercase">
+              <Sparkles className="w-3.5 h-3.5" /> AI-Powered Portraits
+            </div>
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.1] text-white">
+              Get Studio-Quality <br className="hidden lg:block" />
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">AI Headshots</span> in Minutes
+            </h1>
+            <p className="text-lg text-slate-400 max-w-xl mx-auto lg:mx-0 leading-relaxed">
+              Perfect for LinkedIn, resumes, and professional profiles — no photoshoot needed. Upload a selfie and let our AI do the rest.
+            </p>
+            
+            <div className="flex flex-col sm:flex-row items-center gap-4 justify-center lg:justify-start">
+              <button 
+                onClick={onGetStarted} 
+                className="w-full sm:w-auto px-8 py-3.5 bg-indigo-600 text-white rounded-xl text-base font-semibold shadow-lg shadow-indigo-500/25 hover:bg-indigo-500 hover:scale-[1.02] transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+              >
+                Generate My Headshot <ArrowRight className="w-4 h-4" />
+              </button>
+              <button 
+                onClick={() => document.getElementById('examples')?.scrollIntoView({ behavior: 'smooth' })} 
+                className="w-full sm:w-auto px-8 py-3.5 bg-slate-800 text-white rounded-xl text-base font-semibold hover:bg-slate-700 transition-all flex items-center justify-center gap-2"
+              >
+                See Examples
+              </button>
+            </div>
+
+            <div className="pt-4 flex flex-wrap items-center justify-center lg:justify-start gap-6 text-sm font-medium text-slate-400">
+              <div className="flex items-center gap-2"><Zap className="w-4 h-4 text-amber-400" /> Results in minutes</div>
+              <div className="flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-emerald-400" /> Secure upload</div>
+              <div className="flex items-center gap-2"><Briefcase className="w-4 h-4 text-indigo-400" /> Professional use</div>
+            </div>
+          </motion.div>
+
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.8, delay: 0.2 }}
+            className="relative"
+          >
+            {/* Decorative background glow */}
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] h-[120%] bg-indigo-500/20 rounded-full blur-[120px] -z-10"></div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <motion.img animate={{ y: [0, -10, 0] }} transition={{ repeat: Infinity, duration: 4, ease: "easeInOut" }} src="https://auqwezpczravciclsemz.supabase.co/storage/v1/object/public/headshost/indexpage_img/happy1.png" className="rounded-2xl w-full aspect-[3/4] object-cover shadow-2xl border border-white/10" alt="AI Headshot" />
+              <motion.img animate={{ y: [0, 10, 0] }} transition={{ repeat: Infinity, duration: 5, ease: "easeInOut" }} src="https://auqwezpczravciclsemz.supabase.co/storage/v1/object/public/headshost/indexpage_img/hero1.png" className="rounded-2xl w-full aspect-[3/4] object-cover shadow-2xl border border-white/10 mt-8" alt="AI Headshot" />
+            </div>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Before vs After Section */}
+      <section id="examples" className="py-24 bg-slate-900/50 border-y border-white/5">
+        <div className="max-w-7xl mx-auto px-4 lg:px-8">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl lg:text-4xl font-bold text-white tracking-tight mb-4">Incredible Transformations</h2>
+            <p className="text-lg text-slate-400 max-w-2xl mx-auto">See how our AI turns everyday selfies into premium studio portraits.</p>
+          </div>
+          
+          <div className="grid md:grid-cols-2 gap-12 max-w-4xl mx-auto">
+            <div className="space-y-4">
+              <div className="relative group rounded-2xl overflow-hidden shadow-2xl border border-white/10">
+                <img src="https://auqwezpczravciclsemz.supabase.co/storage/v1/object/public/headshost/indexpage_img/before.png" className="w-full aspect-[3/4] object-cover group-hover:scale-105 transition-transform duration-700" alt="Before" />
+                <div className="absolute top-4 left-4 px-3 py-1 bg-black/60 backdrop-blur-md rounded-lg text-xs font-semibold text-white">Original Selfie</div>
+              </div>
+            </div>
+            <div className="space-y-4">
+              <div className="relative group rounded-2xl overflow-hidden shadow-2xl shadow-indigo-500/20 border border-indigo-500/30">
+                <img src="https://auqwezpczravciclsemz.supabase.co/storage/v1/object/public/headshost/indexpage_img/after.png" className="w-full aspect-[3/4] object-cover group-hover:scale-105 transition-transform duration-700" alt="After" />
+                <div className="absolute top-4 left-4 px-3 py-1 bg-indigo-600 rounded-lg text-xs font-semibold text-white shadow-lg">AI Headshot</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Style / Category Section */}
+      <section className="py-24 px-4 lg:px-8 max-w-7xl mx-auto">
+        <div className="text-center mb-16">
+          <h2 className="text-3xl lg:text-4xl font-bold text-white tracking-tight mb-4">Choose Your Style</h2>
+          <p className="text-lg text-slate-400 max-w-2xl mx-auto">Select from dozens of professional styles tailored for your industry.</p>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+          {[
+            { name: 'Corporate', img: 'https://auqwezpczravciclsemz.supabase.co/storage/v1/object/public/headshost/indexpage_img/happy1.png' },
+            { name: 'LinkedIn', img: 'https://auqwezpczravciclsemz.supabase.co/storage/v1/object/public/headshost/indexpage_img/hero1.png' },
+            { name: 'Doctor', img: 'https://auqwezpczravciclsemz.supabase.co/storage/v1/object/public/headshost/indexpage_img/happy2.png' },
+            { name: 'Startup', img: 'https://auqwezpczravciclsemz.supabase.co/storage/v1/object/public/headshost/indexpage_img/happy3.png' },
+            { name: 'Creative', img: 'https://auqwezpczravciclsemz.supabase.co/storage/v1/object/public/headshost/indexpage_img/step3.jpg' },
+            { name: 'Executive', img: 'https://auqwezpczravciclsemz.supabase.co/storage/v1/object/public/headshost/indexpage_img/after.png' }
+          ].map((style, i) => (
+            <div key={i} className="group relative rounded-2xl overflow-hidden border border-white/10 bg-slate-800 hover:border-indigo-500/50 transition-all duration-300">
+              <img src={style.img} className="w-full aspect-square object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-500" alt={style.name} />
+              <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/20 to-transparent"></div>
+              <div className="absolute bottom-0 left-0 right-0 p-6 flex flex-col items-center text-center translate-y-4 group-hover:translate-y-0 transition-transform duration-300">
+                <h3 className="text-lg font-bold text-white mb-3">{style.name}</h3>
+                <button onClick={onGetStarted} className="opacity-0 group-hover:opacity-100 px-4 py-2 bg-white text-slate-900 rounded-xl text-sm font-semibold hover:bg-indigo-50 transition-all w-full">
+                  Generate This Style
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* How it Works */}
+      <section id="how-it-works" className="py-24 bg-slate-900/50 border-y border-white/5">
+        <div className="max-w-7xl mx-auto px-4 lg:px-8">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl lg:text-4xl font-bold text-white tracking-tight mb-4">How It Works</h2>
+            <p className="text-lg text-slate-400 max-w-2xl mx-auto">Get your professional headshots in three simple steps.</p>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-12 relative">
+            {/* Connecting line for desktop */}
+            <div className="hidden md:block absolute top-12 left-[15%] right-[15%] h-px bg-gradient-to-r from-transparent via-indigo-500/50 to-transparent"></div>
+
+            {[
+              { step: '1', title: 'Upload your photo', desc: 'Take a quick selfie or upload an existing photo. No special lighting needed.', icon: Upload },
+              { step: '2', title: 'AI enhances & generates', desc: 'Our AI applies professional lighting, background, and attire.', icon: Sparkles },
+              { step: '3', title: 'Download your image', desc: 'Get your high-resolution headshots ready for LinkedIn and your CV.', icon: Download }
+            ].map((item, i) => (
+              <motion.div 
+                key={i}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.2 }}
+                className="relative flex flex-col items-center text-center space-y-4"
+              >
+                <div className="w-24 h-24 rounded-2xl bg-slate-800 border border-white/10 flex items-center justify-center relative z-10 shadow-xl">
+                  <item.icon className="w-10 h-10 text-indigo-400" />
+                  <div className="absolute -top-3 -right-3 w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center text-sm font-bold text-white shadow-lg">
+                    {item.step}
+                  </div>
+                </div>
+                <h3 className="text-xl font-bold text-white mt-4">{item.title}</h3>
+                <p className="text-slate-400 leading-relaxed">{item.desc}</p>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Trust / Features Strip */}
+      <section className="py-12 border-b border-white/5">
+        <div className="max-w-7xl mx-auto px-4 lg:px-8">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+            {[
+              { icon: Camera, text: 'No studio required' },
+              { icon: Zap, text: 'Fast AI processing' },
+              { icon: ShieldCheck, text: 'Secure & private' },
+              { icon: Image, text: 'High-resolution output' }
+            ].map((feature, i) => (
+              <div key={i} className="flex flex-col items-center justify-center text-center gap-3">
+                <div className="w-12 h-12 rounded-full bg-cyan-500/10 flex items-center justify-center text-cyan-400">
+                  <feature.icon className="w-5 h-5" />
+                </div>
+                <span className="text-sm font-medium text-slate-300">{feature.text}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Testimonial Section */}
+      <section className="py-24 px-4 lg:px-8 max-w-7xl mx-auto">
+        <div className="text-center mb-16">
+          <h2 className="text-3xl lg:text-4xl font-bold text-white tracking-tight mb-4">Loved by Professionals</h2>
+        </div>
+        
+        <div className="grid md:grid-cols-3 gap-8">
+          {[
+            { name: "Sarah Jenkins", role: "Software Engineer", quote: "Looks like a real studio shoot. Saved me time and money! My LinkedIn profile looks 10x better now." },
+            { name: "David Chen", role: "Marketing Manager", quote: "I needed a professional headshot for a conference speaker bio. This generated the perfect image in 5 minutes." },
+            { name: "Emily Rodriguez", role: "Startup Founder", quote: "We used this for our entire team page. The consistency and quality are unmatched. Highly recommended." }
+          ].map((t, i) => (
+            <div key={i} className="p-8 rounded-2xl bg-slate-800/50 border border-white/5 shadow-xl hover:border-indigo-500/30 transition-colors">
+              <div className="flex gap-1 mb-6">
+                {[1,2,3,4,5].map(s => <Star key={s} className="w-4 h-4 fill-amber-400 text-amber-400" />)}
+              </div>
+              <p className="text-slate-300 leading-relaxed mb-8">"{t.quote}"</p>
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full bg-slate-700 flex items-center justify-center text-lg font-bold text-white">
+                  {t.name.charAt(0)}
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-white">{t.name}</p>
+                  <p className="text-xs text-slate-400">{t.role}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Pricing Section */}
+      <section id="pricing" className="py-24 bg-slate-900/50 border-y border-white/5">
+        <div className="max-w-5xl mx-auto px-4 lg:px-8">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl lg:text-4xl font-bold text-white tracking-tight mb-4">Simple, Transparent Pricing</h2>
+            <p className="text-lg text-slate-400 max-w-2xl mx-auto">Get professional headshots at a fraction of the cost of a traditional photoshoot.</p>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+            {/* Free Tier */}
+            <div className="p-8 rounded-2xl bg-slate-800 border border-white/10 shadow-xl flex flex-col">
+              <h3 className="text-2xl font-bold text-white mb-2">Free Trial</h3>
+              <div className="text-4xl font-bold text-white mb-6">Free</div>
+              <ul className="space-y-4 mb-8 flex-1">
+                <li className="flex items-center gap-3 text-slate-300"><Check className="w-5 h-5 text-indigo-400" /> 1 headshot preview</li>
+                <li className="flex items-center gap-3 text-slate-300"><Check className="w-5 h-5 text-indigo-400" /> Basic quality</li>
+                <li className="flex items-center gap-3 text-slate-300"><Check className="w-5 h-5 text-indigo-400" /> Standard processing</li>
+              </ul>
+              <button onClick={onGetStarted} className="w-full py-3 rounded-xl border border-slate-600 text-white font-semibold hover:bg-slate-700 transition-colors">
+                Try for Free
+              </button>
+            </div>
+
+            {/* Pro Tier */}
+            <div className="p-8 rounded-2xl bg-indigo-600 border border-indigo-500 shadow-2xl shadow-indigo-500/20 flex flex-col relative scale-105 z-10">
+              <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-cyan-400 text-slate-900 px-4 py-1 rounded-full text-xs font-bold uppercase tracking-wider shadow-lg">
+                Most Popular
+              </div>
+              <h3 className="text-2xl font-bold text-white mb-2">Pro Plan</h3>
+              <div className="flex items-baseline gap-2 mb-6">
+                <span className="text-4xl font-bold text-white">{formatPrice(799)}</span>
+                <span className="text-indigo-200">/ 5 credits</span>
+              </div>
+              <ul className="space-y-4 mb-8 flex-1">
+                <li className="flex items-center gap-3 text-white"><Check className="w-5 h-5 text-cyan-400" /> 5 High-res headshots</li>
+                <li className="flex items-center gap-3 text-white"><Check className="w-5 h-5 text-cyan-400" /> Multiple premium styles</li>
+                <li className="flex items-center gap-3 text-white"><Check className="w-5 h-5 text-cyan-400" /> HD download</li>
+                <li className="flex items-center gap-3 text-white"><Check className="w-5 h-5 text-cyan-400" /> Faster processing</li>
+              </ul>
+              <button onClick={onGetStarted} className="w-full py-3 rounded-xl bg-white text-indigo-600 font-bold hover:bg-slate-50 hover:scale-[1.02] transition-all shadow-lg">
+                Get Pro Plan
+              </button>
+            </div>
+          </div>
+          
+          <div className="mt-12 flex justify-center">
+            <div className="flex items-center gap-2 bg-slate-800 p-1.5 rounded-xl border border-white/10">
+              {(['USD', 'INR', 'EUR', 'GBP'] as const).map((curr) => (
+                <button
+                  key={curr}
+                  onClick={() => setCurrency(curr)}
+                  className={`px-4 py-1.5 rounded-lg text-xs font-bold tracking-widest transition-all ${
+                    currency === curr ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {curr}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Final CTA Section */}
+      <section className="py-24 px-4 lg:px-8 max-w-4xl mx-auto text-center">
+        <div className="p-12 rounded-3xl bg-gradient-to-br from-indigo-600 to-cyan-600 shadow-2xl relative overflow-hidden">
+          {/* Decorative circles */}
+          <div className="absolute top-0 right-0 -translate-y-1/2 translate-x-1/3 w-64 h-64 bg-white/10 rounded-full blur-2xl"></div>
+          <div className="absolute bottom-0 left-0 translate-y-1/3 -translate-x-1/3 w-64 h-64 bg-black/10 rounded-full blur-2xl"></div>
+          
+          <div className="relative z-10">
+            <h2 className="text-3xl lg:text-5xl font-bold text-white tracking-tight mb-6">Ready to upgrade your profile photo?</h2>
+            <p className="text-indigo-100 text-lg mb-10 max-w-2xl mx-auto">Join thousands of professionals who have already elevated their personal brand with our AI.</p>
+            <button onClick={onGetStarted} className="px-8 py-4 bg-white text-indigo-600 rounded-xl text-lg font-bold shadow-xl hover:scale-105 transition-all active:scale-95">
+              Generate My Headshot
+            </button>
+            <p className="mt-6 text-sm text-indigo-200 font-medium">Try your first headshot for free</p>
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="py-8 border-t border-white/10 text-center text-slate-500 text-sm">
+        <div className="max-w-7xl mx-auto px-4 flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-2 font-bold text-white">
+            <Camera className="w-4 h-4 text-indigo-500" /> HeadshotStudioPro
+          </div>
+          <div className="flex gap-6">
+            <button onClick={() => setIsPrivacyOpen(true)} className="hover:text-white transition-colors">Privacy Policy</button>
+            <button onClick={() => onOpenFAQ('support')} className="hover:text-white transition-colors">Support</button>
+            <a href="mailto:headshotstudiopro@gmail.com" className="hover:text-white transition-colors">Contact</a>
+          </div>
+          <p>© 2026 HeadshotStudioPro. All rights reserved.</p>
+        </div>
+      </footer>
+
+      <PrivacyModal isOpen={isPrivacyOpen} onClose={() => setIsPrivacyOpen(false)} />
+    </div>
+  );
+};
