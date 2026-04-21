@@ -1,5 +1,3 @@
-import { Resend } from "resend";
-
 export async function onRequest(context: any) {
   const { request, env } = context;
 
@@ -26,28 +24,36 @@ export async function onRequest(context: any) {
       });
     }
 
-    const resend = new Resend(resendKey);
     const ccEmails = cc ? cc.split(',').map((e: string) => e.trim()).filter((e: string) => e) : [];
 
-    const { data, error } = await resend.emails.send({
-      from: 'HeadshotStudioPro <support@headshotstudiopro.com>',
-      to: ['headshotstudiopro@gmail.com'],
-      cc: ccEmails,
-      subject: `New Feedback: [${category || 'General'}] from ${name}`,
-      html: `
-        <h2>New Feedback Received (Cloudflare)</h2>
-        <p><strong>Name:</strong> ${name}</p>
-        <p><strong>Email:</strong> ${email}</p>
-        <p><strong>Phone:</strong> ${phone || 'N/A'}</p>
-        <p><strong>Category:</strong> ${category || 'General'}</p>
-        <p><strong>Message:</strong></p>
-        <p>${message.replace(/\n/g, '<br>')}</p>
-      `,
+    // Call Resend API directly via fetch
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${resendKey}`
+      },
+      body: JSON.stringify({
+        from: 'HeadshotStudioPro <support@headshotstudiopro.com>',
+        to: ['headshotstudiopro@gmail.com'],
+        cc: ccEmails,
+        subject: `New Feedback: [${category || 'General'}] from ${name}`,
+        html: `
+          <h2>New Feedback Received (Cloudflare Universal)</h2>
+          <p><strong>Name:</strong> ${name}</p>
+          <p><strong>Email:</strong> ${email}</p>
+          <p><strong>Phone:</strong> ${phone || 'N/A'}</p>
+          <p><strong>Category:</strong> ${category || 'General'}</p>
+          <p><strong>Message:</strong></p>
+          <p>${message.replace(/\n/g, '<br>')}</p>
+        `,
+      })
     });
 
-    if (error) {
-      return new Response(JSON.stringify({ error: "Failed to send email", details: error.message }), {
-        status: 500,
+    if (!response.ok) {
+      const errorData = await response.json() as any;
+      return new Response(JSON.stringify({ error: "Failed to send email", details: errorData.message }), {
+        status: response.status,
         headers: { "content-type": "application/json" }
       });
     }
