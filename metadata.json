@@ -1,0 +1,7 @@
+{
+  "name": "HeadshotStudioPro",
+  "description": "Transform casual photos into professional, studio-quality headshots. Preserves identity while enhancing lighting, attire, and backgrounds for LinkedIn and corporate branding.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

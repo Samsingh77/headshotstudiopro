@@ -1,0 +1,335 @@
+import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
+import { AppStyle, BackgroundStyle, ClothingChoice, ClothingStyle, GenerationSettings, TieColor, BodyPose, SmileType } from "../types";
+
+/**
+ * Service to handle Gemini API interactions for image generation and verification.
+ */
+export class GeminiService {
+  /**
+   * Helper to execute Gemini calls with exponential backoff retry logic and timeout.
+   */
+  private static async withRetry<T>(fn: () => Promise<T>, maxRetries: number = 3, timeoutMs: number = 100000): Promise<T> {
+    let lastError: any;
+    // Increase retries for 503 (high demand) to be more resilient
+    const actualMaxRetries = maxRetries; 
+    
+    for (let i = 0; i <= actualMaxRetries; i++) {
+      try {
+        const timeoutPromise = new Promise<never>((_, reject) => 
+          setTimeout(() => reject(new Error("Request timed out")), timeoutMs)
+        );
+        return await Promise.race([fn(), timeoutPromise]);
+      } catch (error: any) {
+        lastError = error;
+        const status = error?.status || error?.code;
+        const isRetryable = status === 429 || status === 500 || status === 503 || 
+                           error?.message?.includes('exhausted') || 
+                           error?.message?.includes('demand') ||
+                           error?.message?.includes('timed out') ||
+                           error?.message?.includes('fetch') ||
+                           error?.name === 'AbortError';
+        
+        // If it's a 503, we can try even more times (up to 5 total attempts)
+        const currentMaxRetries = status === 503 ? 4 : actualMaxRetries;
+
+        if (isRetryable && i < currentMaxRetries) {
+          // For 503 (high demand), use a progressively longer delay
+          const baseDelay = status === 503 ? 3000 : 1500;
+          const delay = Math.pow(2, i) * baseDelay + Math.random() * 2000;
+          console.warn(`Gemini API error (${status || 'Timeout'}). Retrying in ${Math.round(delay)}ms... (Attempt ${i + 1}/${currentMaxRetries + 1})`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+        throw error;
+      }
+    }
+    throw lastError;
+  }
+
+  /**
+   * Verifies the count of humans in the image to ensure exactly one person is present.
+   * Returns 'ZERO', 'ONE', or 'MULTIPLE'.
+   */
+  static async verifyHumanCount(base64Image: string): Promise<'ZERO' | 'ONE' | 'MULTIPLE'> {
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
+    try {
+      const [header, data] = base64Image.split(',');
+      const mimeType = header.match(/:(.*?);/)?.[1] || 'image/jpeg';
+
+      const response = await this.withRetry(() => ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: {
+          parts: [
+            { inlineData: { data, mimeType } },
+            { text: "Examine this image. How many clearly visible human beings are in this photo? Reply with exactly one word: 'ZERO', 'ONE', or 'MULTIPLE'." }
+          ]
+        },
+      }));
+      const text = response.text?.trim().toUpperCase() || '';
+      if (text.includes('MULTIPLE')) return 'MULTIPLE';
+      if (text.includes('ONE')) return 'ONE';
+      return 'ZERO';
+    } catch (e) {
+      console.error("Verification failed", e);
+      return 'ONE'; // Graceful fallback to allow user to proceed
+    }
+  }
+
+  /**
+   * Generates a professional headshot from an uploaded image.
+   */
+  static async transformImage(
+    base64Image: string,
+    settings: GenerationSettings,
+    highRes: boolean = false,
+    seed?: number,
+    isThumbnail: boolean = false
+  ): Promise<string> {
+    // Always prefer the user-selected API key (process.env.API_KEY) for paid models like 3.1
+    // GEMINI_API_KEY is the platform's free key which may not have access to paid image models.
+    const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error("Gemini API key is missing. Please select a key from a paid project.");
+    }
+    const ai = new GoogleGenAI({ apiKey: apiKey as string });
+    // Use 3.1 for both to ensure consistency between preview and master
+    // Use 2.5 for free thumbnails
+    const primaryModel = 'gemini-3.1-flash-image-preview';
+    const fallbackModel = 'gemini-2.5-flash-image';
+    
+    const stylePrompts: Record<AppStyle, string> = {
+      [AppStyle.CORPORATE_EXECUTIVE]: "High-authority, clean executive appearance with strong, confident lighting.",
+      [AppStyle.CREATIVE_PROFESSIONAL]: "Artistic but clean lighting, expressive and modern creative look.",
+      [AppStyle.FORMAL_BUSINESS]: "Traditional high-formality corporate look, very professional and neat.",
+      [AppStyle.SMART_CASUAL]: "Competent and approachable modern workplace look.",
+    };
+
+    const backgroundPrompts: Record<BackgroundStyle, string> = {
+      [BackgroundStyle.PURE_WHITE]: "on an absolute #FFFFFF pure white background with zero shadows.",
+      [BackgroundStyle.TRANSPARENT]: "The subject must be perfectly isolated with NO background. The background must be completely transparent (alpha channel). This is a background removal task; ensure the output is a transparent PNG with only the person visible and no pixels in the background area. There should be no white or colored background behind the subject.",
+      [BackgroundStyle.SOURCE]: "Keep the EXACT background from the source image. Do not modify, blur, or replace the background. The person should be integrated naturally into the original setting.",
+      [BackgroundStyle.SOFT_GREY]: "on a professional soft grey studio background with elegant, diffused lighting.",
+      [BackgroundStyle.LIGHT_GRAY]: "on a professional light gray studio background with soft, clean lighting.",
+      [BackgroundStyle.OFFICE_BLUR]: "in a high-end modern office with deep cinematic bokeh blur.",
+      [BackgroundStyle.PLAIN_WHITE]: "on a simple and professional plain white background.",
+      [BackgroundStyle.DEEP_BLUE]: "on a rich, solid deep modern royal blue studio background.",
+      [BackgroundStyle.FOREST_GREEN]: "on a sophisticated classic forest green studio backdrop.",
+      [BackgroundStyle.BURGUNDY]: "on an elegant, deep burgundy or maroon studio background.",
+      [BackgroundStyle.MOCHA]: "on a warm, professional mocha brown studio background.",
+      [BackgroundStyle.DEEP_TEAL]: "on a professional, sophisticated deep teal-colored studio background.",
+      [BackgroundStyle.CHARCOAL_TEXTURED]: "on a dark, textured charcoal grey studio background with subtle mottling and professional lighting.",
+      [BackgroundStyle.WARM_SPOTLIGHT]: "on a warm grey studio background with a soft, elegant spotlight effect behind the subject.",
+      [BackgroundStyle.WARM_ABSTRACT]: "on a warm, artistic abstract studio background with soft textures and a blend of warm earth tones like tan, mocha, and soft grey."
+    };
+
+    const getClothingPrompt = () => {
+      if (settings.clothingChoice === ClothingChoice.ORIGINAL) return "Keep original clothing.";
+      
+      const colorMap: Record<ClothingStyle, string> = {
+        [ClothingStyle.NAVY_BLUE]: "navy blue",
+        [ClothingStyle.CHARCOAL_GRAY]: "charcoal gray",
+        [ClothingStyle.BLACK]: "black",
+        [ClothingStyle.LIGHT_GRAY]: "light gray",
+        [ClothingStyle.TEXTURED_BLUE]: "textured blue",
+        [ClothingStyle.OLIVE_GREEN]: "olive green",
+        [ClothingStyle.BURGUNDY]: "deep burgundy",
+        [ClothingStyle.DARK_BROWN]: "dark brown",
+        [ClothingStyle.TAN_BEIGE]: "tan / beige",
+        [ClothingStyle.SLATE_GRAY]: "slate gray",
+        [ClothingStyle.CUSTOM]: "custom color",
+      };
+      
+      const color = settings.clothingStyle === ClothingStyle.CUSTOM 
+        ? `custom color (hex: ${settings.customSuitHex})` 
+        : colorMap[settings.clothingStyle];
+      
+      let tieColorStr = settings.tieColor.toLowerCase();
+      if (settings.tieColor === TieColor.CUSTOM) {
+        tieColorStr = `custom color (hex: ${settings.customTieHex})`;
+      }
+
+      switch (settings.clothingChoice) {
+        case ClothingChoice.SUIT_AND_TIE: return `wearing a premium ${color} suit, white shirt, and a ${tieColorStr} professional tie.`;
+        case ClothingChoice.SUIT_ONLY: return `wearing a premium ${color} suit jacket and open-collar white shirt.`;
+        case ClothingChoice.NO_SUIT_NO_TIE: return `wearing a crisp ${color} professional shirt.`;
+        default: return "";
+      }
+    };
+
+    const getBeautyPrompt = () => {
+      let prompt = "";
+      if (settings.beautyFilter > 0) {
+        prompt += `Apply a professional beauty enhancement (level ${settings.beautyFilter}/100), enhancing facial symmetry and natural skin radiance with subtle subsurface scattering for a realistic skin glow while maintaining original skin tones. Ensure the skin looks healthy, vibrant, and naturally brightened with professional studio luminosity without looking artificial. `;
+      }
+      if (settings.smoothing > 0) {
+        prompt += `Apply professional face smoothing (level ${settings.smoothing}/100) to reduce blemishes and even out skin tone. CRITICAL: The skin MUST maintain ultra-realistic micro-textures, pores, and fine details. It should NOT look waxy, blurry, or "plastic". `;
+      } else {
+        prompt += "Maintain ultra-realistic natural skin micro-textures, pores, and fine details with natural skin translucency. ";
+      }
+
+      if (settings.eyeEnhancement) {
+        prompt += "Apply professional eye enhancement: sharpen the iris, enhance the natural catchlights for a vibrant look, and ensure the eyes look bright and clear. ";
+      }
+      
+      // Face Lighting / Fill Light logic
+      const leftLighting = settings.faceLeftLighting ?? 50;
+      const rightLighting = settings.faceRightLighting ?? 50;
+      prompt += `Apply precise studio lighting control: Face(Left) Lighting at ${leftLighting}/100 and Face(Right) Lighting at ${rightLighting}/100. Adjust the fill-light on each side of the face independently to achieve a perfectly balanced, high-end professional look. The illumination on both sides of the face must be nearly equal, with only a subtle 10-20% difference in intensity to maintain natural facial contours without creating heavy shadows on either side. Ensure the face is well-illuminated with flattering soft shadows that preserve natural contours and facial details. `;
+      
+      // Body Pose instruction
+      if (settings.bodyPose === BodyPose.FULL_FRONT) {
+        prompt += "ADJUSTMENT: Generate a full front-facing view. The framing MUST crop exactly at the mid-torso/waist level (blue line framing). The subject must look directly at the camera. ";
+      } else if (settings.bodyPose === BodyPose.SIDE_FRONT) {
+        prompt += "ADJUSTMENT: If the source image already has a side profile, maintain that orientation. Otherwise, re-orient the person to a slightly side-angled view (body and head slightly turned), but the subject MUST look directly at the camera. The framing MUST crop exactly at the mid-torso/waist level (blue line framing). ";
+      } else if (settings.bodyPose === BodyPose.ZOOM_VIEW) {
+        prompt += "ADJUSTMENT: Generate a tight front-facing view. The framing MUST crop exactly just below the shoulders/upper-chest level (red line framing), focusing heavily on the face. ";
+      } else if (settings.bodyPose === BodyPose.THREE_QUARTER) {
+        prompt += "ADJUSTMENT: Generate a professional three-quarter angle view. The framing MUST crop exactly at the mid-thigh or knee level (green line framing), showing more of the body. ";
+      }
+
+      if (settings.enableSmile) {
+        // Smile Type logic
+        if (settings.smileType === SmileType.PROFESSIONAL) {
+          prompt += "EXPRESSION: Apply a pleasant, professional smile. The mouth should be slightly upturned at the corners. A very slight, subtle hint of teeth is acceptable, but keep it understated and highly professional. ";
+        } else if (settings.smileType === SmileType.BIG_SMILE) {
+          prompt += "EXPRESSION: Apply a warm, friendly smile. Show a natural, moderate amount of teeth, avoiding an overly wide or exaggerated grin. ";
+        }
+      } else {
+        prompt += "EXPRESSION: Maintain the person's original facial expression and mouth shape from the source image. Do not modify the smile. ";
+      }
+
+      if (settings.enableAdditionalSettings) {
+        // Additional Settings
+        if (settings.enableFairness) {
+          prompt += "Apply subtle professional skin brightening and radiance enhancement while strictly maintaining the subject's natural skin tone and ethnicity. ";
+        }
+        if (settings.enableFaceSmoothing) {
+          prompt += "Apply professional face smoothing to reduce blemishes and even out skin tone. CRITICAL: The skin MUST maintain natural micro-textures, pores, and fine details. ";
+        }
+        if (settings.enableBeautification) {
+          prompt += "Apply a general professional beautification filter, enhancing facial symmetry and brightness. Ensure the skin looks healthy and vibrant. ";
+        }
+      }
+
+      prompt += "CRITICAL: The generated portrait MUST maintain a 100% accurate resemblance to the person in the source image. ";
+      
+      return prompt;
+    };
+
+    let mouthControl = "Maintain the subject's natural mouth expression and original smile from the source image.";
+    if (settings.enableSmile) {
+      if (settings.smileType === SmileType.PROFESSIONAL) {
+        mouthControl = "A pleasant, professional smile is requested. A very slight, subtle hint of teeth may be visible, but keep the mouth mostly closed and understated. Do not show too much teeth.";
+      } else if (settings.smileType === SmileType.BIG_SMILE) {
+        mouthControl = "A warm, friendly smile is requested. Show a natural, moderate amount of teeth, avoiding an overly wide or exaggerated grin.";
+      }
+    } else {
+      mouthControl = "Maintain the subject's original mouth expression and smile exactly as seen in the source image.";
+    }
+
+    const prompt = `
+      CRITICAL INSTRUCTION: Follow the requested facial expression carefully.
+      
+      1. MOUTH & TEETH CONTROL (HIGHEST PRIORITY): 
+         - ${mouthControl}
+      
+      2. HEAD & FACE ORIENTATION (MANDATORY): 
+         Follow the specific POSE ADJUSTMENT instructions provided below. Re-orient the head and body as requested while maintaining facial identity.
+      
+      3. ARM & HAND POSTURE (STRICT): 
+         - ABSOLUTELY NO HANDS, PHONES, OR GESTURES.
+         - Remove any hands visible in the frame, including hands holding phones, making signs (like peace signs), or touching the face.
+         - The subject's arms MUST be in a natural, professional downward position at their sides (out of frame or resting naturally).
+         - The shoulders should follow the requested orientation, but the arms must be relaxed and down.
+      
+      4. IDENTITY & EXPRESSION: 
+         - Maintain 100% anatomical facial likeness. ${getBeautyPrompt()}
+      
+      5. PROFESSIONAL UPGRADE (QUALITY ONLY): 
+         - Apply high-end three-point studio lighting (soft key light, gentle fill light to soften shadows, and a subtle rim light for depth and separation from the background). The lighting must be balanced across the face, ensuring both sides are clearly visible with minimal contrast difference (10-20% max).
+         - Replace the background with: ${backgroundPrompts[settings.background]}
+         - Replace the clothing with: ${getClothingPrompt()}
+      
+      6. COMPOSITION & QUALITY: 4:3 Horizontal framing. ${settings.bodyPose === BodyPose.ZOOM_VIEW ? 'Tight head and shoulders professional studio portrait. The bottom of the frame MUST crop just below the shoulders/upper-chest (red line framing).' : settings.bodyPose === BodyPose.THREE_QUARTER ? 'Three-quarter length professional studio portrait. The bottom of the frame MUST crop at the mid-thigh or knee level (green line framing).' : 'Medium shot (waist-up) professional studio portrait. The bottom of the frame MUST crop at the mid-torso or waist level (blue line framing), showing the full torso and shoulders clearly.'} This specific framing is MANDATORY for the selected pose. Maintain significant headroom (empty space) above the top of the head. Zeiss 85mm rendering with soft background falloff. Medium format camera aesthetic (Phase One XF quality).
+      
+      7. EXTREME DETAIL & CLARITY (MANDATORY): 
+         - ${settings.smoothing > 30 ? 'Clean, polished skin appearance with natural luminosity.' : 'Lifelike skin with visible fine pores, ultra-realistic micro-textures, and natural skin translucency.'}
+         - Sharp focus on the eyes with vibrant, elegant catchlights.
+         - High-resolution fabric textures in clothing.
+         - Professional color grading with natural, healthy skin tones. Avoid any unnatural skin whitening, artificial color shifts, or oversaturation. The skin tone must be 100% natural and consistent with the source image, but enhanced with a professional studio-lit glow and natural subsurface scattering. Ensure the face color and skin tone are perfectly matched to the subject's original complexion with a high-end, professional finish.
+         - NO airbrushing unless specified by smoothing levels.
+         - The final output must have the clarity and detailing of a high-end 8k professional studio photograph.
+      
+      8. NEGATIVE CONSTRAINTS (STRICT):
+         - NO EXAGGERATED GRINS OR OVERLY WIDE MOUTHS.
+         - NO DISTORTED TEETH.
+         - NO OPEN MOUTHS. NO PARTED LIPS (unless specified by smile settings).
+         - NO HANDS, FINGERS, OR GESTURES.
+         - NO PHONES OR ACCESSORIES.
+         - NO GLASSES (unless in source).
+         - NO DISTORTED FACIAL FEATURES.
+    `;
+
+    try {
+      const startTime = Date.now();
+      console.log(\`>>> Starting Gemini Image Generation (\${primaryModel})...\`, { isThumbnail, highRes, seed });
+      
+      const [header, data] = base64Image.split(',');
+      const mimeType = header.match(/:(.*?);/)?.[1] || 'image/jpeg';
+      
+      const executeGeneration = async (model: string) => {
+        const config: any = {
+          imageConfig: { 
+            aspectRatio: "4:3",
+            // Fallback model (2.5) doesn't support 2K/4K, so we cap it at 1K if using fallback
+            imageSize: isThumbnail ? "512px" : (highRes && model === primaryModel ? "2K" : "1K")
+          }
+        };
+        
+        if (seed !== undefined) {
+          config.seed = seed;
+        }
+
+        return await ai.models.generateContent({
+          model: model,
+          contents: {
+            parts: [{ inlineData: { data, mimeType } }, { text: prompt }]
+          },
+          config
+        });
+      };
+
+      let response: GenerateContentResponse;
+      try {
+        // Try primary model with retries
+        response = await this.withRetry(() => executeGeneration(primaryModel));
+      } catch (primaryError: any) {
+        const status = primaryError?.status || primaryError?.code;
+        // If primary model is unavailable (503) or overloaded (429), try fallback model
+        if (status === 503 || status === 429 || primaryError?.message?.includes('demand')) {
+          console.warn(\`Primary model (\${primaryModel}) failed with \${status}. Attempting fallback to \${fallbackModel}...\`);
+          // Try fallback model with its own retries
+          response = await this.withRetry(() => executeGeneration(fallbackModel));
+        } else {
+          throw primaryError;
+        }
+      }
+
+      const duration = (Date.now() - startTime) / 1000;
+      console.log(\`>>> Gemini API call completed in \${duration.toFixed(2)}s\`);
+
+      for (const cand of response.candidates || []) {
+        if (cand.finishReason === 'SAFETY') {
+          throw new Error("The image could not be generated due to safety filters. Please try a different photo.");
+        }
+        for (const part of cand.content.parts) {
+          if (part.inlineData) return \`data:image/png;base64,\${part.inlineData.data}\`;
+        }
+      }
+      throw new Error("The AI was unable to produce an image. This can happen with very complex photos. Please try again.");
+    } catch (error) {
+      console.error(error);
+      throw error;
+    }
+  }
+}
