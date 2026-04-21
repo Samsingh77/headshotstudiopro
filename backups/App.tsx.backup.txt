@@ -1,2 +1,0 @@
-// Backup of App.tsx created on 2026-03-22
-// This file is a exact copy of the working version before UI changes.
