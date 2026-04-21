@@ -1,5 +1,3 @@
-import Razorpay from "razorpay";
-
 export async function onRequest(context: any) {
   const { request, env } = context;
 
@@ -28,11 +26,7 @@ export async function onRequest(context: any) {
       });
     }
 
-    const razorpay = new Razorpay({
-      key_id: keyId,
-      key_secret: keySecret,
-    });
-
+    // Call Razorpay API directly via fetch (Universal / Cloudflare compatible)
     const options = {
       amount: Math.round(amount * 100), // paise
       currency: "INR",
@@ -43,7 +37,25 @@ export async function onRequest(context: any) {
       }
     };
 
-    const order = await razorpay.orders.create(options);
+    const auth = btoa(`${keyId}:${keySecret}`);
+    const response = await fetch("https://api.razorpay.com/v1/orders", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Basic ${auth}`
+      },
+      body: JSON.stringify(options)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json() as any;
+      return new Response(JSON.stringify({ error: errorData.error?.description || "Razorpay API error" }), {
+        status: response.status,
+        headers: { "content-type": "application/json" }
+      });
+    }
+
+    const order = await response.json() as any;
     return new Response(JSON.stringify({ orderId: order.id }), {
       headers: { "content-type": "application/json" }
     });
