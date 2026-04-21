@@ -2929,16 +2929,22 @@ const App: React.FC = () => {
           locationOrigin: window.location.origin 
         });
         console.log("Diagnostic: Checking backend health at /api/health...");
-        const res = await safeFetch('/api/health', {}, 5, 2000); // 5 retries with 2s backoff
+        const res = await safeFetch('/api/health', {}, 5, 2000); 
         if (res.ok) {
-          const data = await res.json();
-          console.log("Diagnostic: Backend Health Check Response:", data);
-          if (!data.supabase) {
-            console.warn("Diagnostic: Backend reports Supabase is NOT initialized.");
-            setToast({
-              message: "Server-side Supabase connection is missing. Check environment variables.",
-              type: 'warning'
-            });
+          const text = await res.text();
+          try {
+            const data = JSON.parse(text);
+            console.log("Diagnostic: Backend Health Check Response:", data);
+            if (!data.supabase) {
+              console.warn("Diagnostic: Backend reports Supabase is NOT initialized.");
+              setToast({
+                message: "Server-side Supabase connection is missing. Check environment variables.",
+                type: 'warning'
+              });
+            }
+          } catch (parseErr) {
+            console.error("Diagnostic: Backend health check returned non-JSON response:", text.substring(0, 500));
+            throw new Error(`Invalid response format from backend. Expected JSON, got: ${text.substring(0, 50).replace(/<[^>]*>/g, '')}...`);
           }
         } else {
           const text = await res.text();
@@ -3329,7 +3335,18 @@ const App: React.FC = () => {
     if (!session?.user?.id) return;
     try {
       const { data, error } = await supabase.from('token_history').select('*').eq('user_id', session.user.id).order('created_at', { ascending: false });
-      if (!error && data) setHistory(data);
+      
+      if (error) {
+        if (error.code === 'PGRST116' || error.message?.includes('not found') || error.status === 404) {
+          console.warn("token_history table does not exist. Returning empty list.");
+          setHistory([]);
+        } else {
+          console.error('Error fetching token history:', error);
+          setHistory([]);
+        }
+      } else {
+        if (data) setHistory(data);
+      }
     } catch (e) {
       console.error("Fetch history failed", e);
     }
