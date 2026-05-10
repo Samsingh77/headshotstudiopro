@@ -11,6 +11,8 @@ import { fileURLToPath } from "url";
 import { Resend } from "resend";
 import axios from "axios";
 import FormData from "form-data";
+import { GoogleGenAI } from "@google/genai";
+import { rateLimit } from "express-rate-limit";
 
 console.log(">>> server.ts starting up... Timestamp:", new Date().toISOString());
 
@@ -22,13 +24,21 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = 3000;
 
+// Trust proxy for rate limiting behind load balancers/nginx
+app.set("trust proxy", 1);
+
 // Export app for Vercel
 export default app;
 
 const getEnvVar = (name: string, fallback: string = ''): string => {
   const val = process.env[name] || fallback;
   if (val === 'undefined' || val === 'null' || !val) return fallback;
-  return val.trim();
+  const trimmed = val.trim();
+  // Filter out cases where the value is just the name of the variable (common placeholder mistake)
+  // Also filter out values that start with "MY_G" or "GEMI" as they are likely placeholders
+  if (trimmed === 'GEMINI_API_KEY' || trimmed === 'MY_GEMINI_KEY' || trimmed === 'API_KEY' || 
+      trimmed === 'YOUR_GEMINI_API_KEY' || trimmed.startsWith('MY_G') || trimmed.startsWith('GEMI_')) return fallback;
+  return trimmed;
 };
 
 let razorpay: any;
@@ -66,11 +76,13 @@ app.use(cors({
       "http://localhost:5173",
       "https://headshotstudiopro.com",
       "https://www.headshotstudiopro.com",
+      "https://aiwithshyam.com",
+      "https://www.aiwithshyam.com",
       process.env.APP_URL,
       process.env.SHARED_APP_URL
     ].filter(Boolean);
 
-    if (allowedOrigins.includes(origin) || origin.endsWith('.run.app')) {
+    if (allowedOrigins.includes(origin) || origin.endsWith('.run.app') || process.env.NODE_ENV !== 'production') {
       callback(null, true);
     } else {
       console.warn(`>>> CORS blocked request from origin: ${origin}`);
@@ -107,6 +119,102 @@ app.get("/api/health", (req, res) => {
       hasServiceKey: !!supabaseServiceKey
     }
   });
+});
+
+app.get("/api/ecosystem-apps", async (req, res) => {
+  try {
+    const configUrl = 'https://aiwithshyam.com/suite-config.json';
+    console.log(`>>> Proxying ecosystem apps request to: ${configUrl}`);
+    
+    let appsData = null;
+
+    // 1. Try JSON Fetch
+    try {
+      const response = await axios.get(configUrl, { 
+        timeout: 3000,
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'HeadshotStudioPro-Backend/1.0'
+        }
+      });
+      
+      let data = response.data;
+      if (typeof data === 'string') {
+        try {
+          data = JSON.parse(data);
+        } catch (e) {
+          // Not JSON, continue to next method
+        }
+      }
+      
+      if (data && typeof data === 'object' && Array.isArray(data)) {
+        appsData = data;
+      }
+    } catch (e) {
+      console.warn(">>> configUrl fetch failed, trying Supabase...");
+    }
+
+    // 2. Try Supabase if JSON failed
+    if (!appsData && supabase) {
+      try {
+        const { data: supabaseApps, error } = await supabase
+          .from('ecosystem_apps')
+          .select('*')
+          .order('order_index', { ascending: true });
+        
+        if (!error && supabaseApps && supabaseApps.length > 0) {
+          appsData = supabaseApps.map((app: any) => ({
+            id: app.id,
+            name: app.name || app.title,
+            description: app.description,
+            url: app.url,
+            icon: app.icon_name || app.icon,
+            color: app.accent_color || app.color
+          }));
+          console.log(`>>> Successfully fetched ${appsData.length} apps from Supabase.`);
+        }
+      } catch (sbErr) {
+        console.warn(">>> Supabase ecosystem_apps fetch failed.");
+      }
+    }
+    
+    if (appsData) {
+      return res.json(appsData);
+    }
+
+    throw new Error('All external fetch methods failed');
+  } catch (err: any) {
+    // Suppress verbose error for expected fallbacks
+    if (err.message !== 'All external fetch methods failed') {
+      console.error(">>> Ecosystem proxy notice:", err.message);
+    }
+    
+    // Return high-quality fallback data so the frontend remains functional
+    res.json([
+      {
+        id: 'gts',
+        name: 'GraphToSheets',
+        description: 'Convert chart images into structured Excel data.',
+        url: 'https://graphtosheet.vercel.app',
+        icon: 'FileSpreadsheet',
+      },
+      {
+        id: 'hsp',
+        name: 'HeadshotStudioPro',
+        description: 'Generate studio-quality headshots from any photo.',
+        url: 'https://headshotstudiopro.com',
+        icon: 'User',
+        color: '#10b981'
+      },
+      {
+        id: 'geonex',
+        name: 'GeoNex AI',
+        description: 'Extract location intelligence from map images.',
+        url: 'https://geonex.ai',
+        icon: 'MapPin',
+      }
+    ]);
+  }
 });
 
 app.get("/api/ping", (req, res) => {
@@ -146,7 +254,172 @@ if (supabaseUrl && supabaseServiceKey) {
 }
 
 
+// Initialize Gemini
+const isValidKey = (key: string) => key && key.startsWith('AIza') && key.length > 20;
+
+const getGeminiKey = () => {
+  const myKey = getEnvVar('MY_GEMINI_KEY');
+  const platformKey = getEnvVar('API_KEY');
+  const sharedKey = getEnvVar('GEMINI_API_KEY');
+  
+  // For the SDK initialization, try to find the first ACTUAL key
+  const keys = [
+    { name: 'MY_GEMINI_KEY', val: myKey },
+    { name: 'API_KEY', val: platformKey },
+    { name: 'GEMINI_API_KEY', val: sharedKey }
+  ];
+
+  const validEntry = keys.find(k => isValidKey(k.val));
+  
+  if (validEntry) {
+    const key = validEntry.val;
+    const masked = key.substring(0, 6) + "..." + key.substring(key.length - 4);
+    console.log(`>>> Gemini Key: Using ${validEntry.name} [${masked}] for SDK initialization.`);
+    return key;
+  }
+
+  // If no valid key found, but some placeholders exist, log them as warnings
+  keys.forEach(k => {
+    if (k.val && !isValidKey(k.val)) {
+      console.warn(`>>> Gemini Key Warning: ${k.name} exists but looks invalid (doesn't start with AIza or too short).`);
+    }
+  });
+
+  return '';
+};
+
+const geminiKey = getGeminiKey();
+if (!geminiKey) {
+  console.error(">>> CRITICAL: No Gemini API Key found (checked MY_GEMINI_KEY, API_KEY, GEMINI_API_KEY). AI features WILL FAIL.");
+} else if (!geminiKey.startsWith('AIza')) {
+  console.warn(">>> WARNING: The detected Gemini API Key does not start with 'AIza'. It may be invalid.");
+}
+
+let geminiClient: any = null;
+if (geminiKey && geminiKey.length > 10) {
+  try {
+    geminiClient = new GoogleGenAI({ apiKey: geminiKey });
+    console.log(">>> Gemini SDK initialized successfully.");
+  } catch (err: any) {
+    console.error(">>> Gemini SDK initialization failed:", err.message);
+  }
+}
+
 // API Routes
+
+// Gemini API Rate Limiter
+// Prevents API abuse and credit exhaustion by limiting each IP to 30 requests per 15 minutes
+const geminiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 30, // Limit each IP to 30 requests per window
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  message: { error: "Too many AI generation requests. Please try again in 15 minutes." }
+});
+
+app.post("/api/gemini-proxy", geminiLimiter, async (req, res) => {
+  try {
+    const { model: modelName, contents, config, usePremiumKey } = req.body;
+
+    // Retrieve keys with fallbacks
+    const myGeminiKey = getEnvVar('MY_GEMINI_KEY');
+    const platformKey = getEnvVar('API_KEY');
+    const sharedKey = getEnvVar('GEMINI_API_KEY');
+    
+    // Selection logic with source tracking for debugging
+    let activeKey = '';
+    let keySource = '';
+
+    const candidates = [
+      { name: 'MY_GEMINI_KEY', val: myGeminiKey },
+      { name: 'API_KEY', val: platformKey },
+      { name: 'GEMINI_API_KEY', val: sharedKey }
+    ];
+
+    if (usePremiumKey) {
+      // Priority: Personal > Platform > Shared
+      const match = candidates.find(c => isValidKey(c.val));
+      if (match) { activeKey = match.val; keySource = match.name; }
+    } else {
+      // Priority: Shared > Platform > Personal
+      const match = [candidates[2], candidates[1], candidates[0]].find(c => isValidKey(c.val));
+      if (match) { activeKey = match.val; keySource = match.name; }
+    }
+
+    // Fallback: If no VALID key found, pick whatever was attempted (to allow the AIza error to show which one is bad)
+    if (!activeKey) {
+       if (usePremiumKey) {
+         activeKey = myGeminiKey || platformKey || sharedKey;
+         keySource = myGeminiKey ? 'MY_GEMINI_KEY' : (platformKey ? 'API_KEY' : 'GEMINI_API_KEY');
+       } else {
+         activeKey = sharedKey || platformKey || myGeminiKey;
+         keySource = sharedKey ? 'GEMINI_API_KEY' : (platformKey ? 'API_KEY' : 'MY_GEMINI_KEY');
+       }
+    }
+
+    if (!activeKey || activeKey.length < 5) {
+      console.error(">>> Gemini Proxy: No AI API key found!");
+      return res.status(500).json({ 
+        error: "Gemini API key is missing. Please ensure your API key is correctly configured in the AI Studio Settings.",
+        details: { missing: true, keySourceAttempted: usePremiumKey ? 'Premium' : 'Free' }
+      });
+    }
+
+    // Default to a known stable model if none provided
+    const model = modelName || 'gemini-3-flash-preview';
+    const maskedKey = activeKey.substring(0, 6) + "..." + activeKey.substring(activeKey.length - 4);
+    
+    // Safety check for common format errors
+    if (!isValidKey(activeKey)) {
+      console.error(`>>> Gemini Proxy Format Error: Key from ${keySource} starts with "${activeKey.substring(0, 8)}..." instead of "AIza" or is too short.`);
+      return res.status(401).json({ 
+        error: `The API key format in your ${keySource} secret is invalid.`,
+        message: `Your ${keySource} secret appears to be set to a placeholder or invalid value (starts with "${activeKey.substring(0, 4)}...") instead of a real API key. Please update it in the AI Studio Settings. A valid Gemini API key MUST start with 'AIza'.`,
+        details: { keySource, maskedKey, preview: activeKey.substring(0, 8) }
+      });
+    }
+
+    console.log(`>>> Server Proxy: Calling ${model} [${keySource}]`);
+    
+    // Construct the payload for the REST API
+    // The contents from req.body should be an array of Content objects
+    // Example: [{ role: 'user', parts: [...] }]
+    const payload: any = {
+      contents: Array.isArray(contents) ? contents : [contents]
+    };
+
+    if (config) {
+      // The REST API expects generationConfig
+      payload.generationConfig = { ...config };
+      
+      // Clean up config for REST API if it came from the SDK format
+      if (payload.generationConfig.stopSequences && payload.generationConfig.stopSequences.length === 0) {
+        delete payload.generationConfig.stopSequences;
+      }
+    }
+
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${activeKey}`;
+    
+    const response = await axios.post(url, payload, { 
+      timeout: 180000,
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    res.json(response.data);
+  } catch (error: any) {
+    const errorData = error.response?.data?.error || error.response?.data || {};
+    const errorMessage = errorData.message || error.message || "Gemini operation failed";
+    const statusCode = error.response?.status || 500;
+    
+    console.error(">>> Gemini Proxy Error Details:", JSON.stringify(errorData));
+    res.status(statusCode).json({ 
+      error: errorMessage,
+      status: statusCode,
+      details: errorData
+    });
+  }
+});
+
 app.post("/api/payment/order", async (req, res) => {
   try {
     const { amount, currency = "INR" } = req.body;

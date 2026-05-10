@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Mail, Lock, Eye, EyeOff, Chrome, User, Camera, ArrowRight, ArrowLeft, CheckCircle2, HelpCircle, Coins, LogOut, Sun, Moon, X, Trash2, Star, Send, History, IdCard, ShieldCheck, Clock, Settings, MessageSquare, Sparkles, UploadCloud, Shirt, Layout, Cpu, Download, Info, ChevronLeft, ChevronDown, CreditCard, Share2, Twitter, Linkedin, Facebook, Copy, Lightbulb, RotateCcw, Contrast, Palette, Coffee, Maximize2, Wand2, Instagram, Github, Building2, Users, Award, Briefcase, AlertCircle, Check, Zap, Image, Save, Upload, Grid, Crop as CropIcon } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, Chrome, User, Camera, ArrowRight, ArrowLeft, CheckCircle2, HelpCircle, Coins, LogOut, Sun, Moon, X, Trash2, Star, Send, History, IdCard, ShieldCheck, Clock, Settings, MessageSquare, Sparkles, UploadCloud, Shirt, Layout, Cpu, Download, Info, ChevronLeft, ChevronDown, ChevronRight, CreditCard, Share2, Twitter, Linkedin, Facebook, Copy, Lightbulb, RotateCcw, Contrast, Palette, Coffee, Maximize2, Wand2, Instagram, Github, Building2, Users, Award, Briefcase, AlertCircle, Check, Zap, Image, Save, Upload, Grid, Crop as CropIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactCrop, { centerCrop, makeAspectCrop, type Crop, type PixelCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
@@ -13,7 +13,7 @@ import { compressImage, generateThumbnail } from './utils/image';
 import { HeroSection } from '@/src/components/ui/feature-carousel';
 import { StudioSamples } from './src/components/StudioSamples';
 
-import { AISuiteMenu } from './src/components/AISuiteMenu';
+import { AppEntry, ecosystemService } from './src/services/ecosystemService';
 import { ExploreMoreTools } from './src/components/ExploreMoreTools';
 
 // Razorpay integration
@@ -25,7 +25,8 @@ declare global {
 
 // Constants for credit consumption mapping
 const CREDIT_COST_HD = 5;
-const CREDIT_COST_PREVIEW = 1; // Based on user example: 9 credits = 1 HD (5) + 4 Previews (4)
+const CREDIT_COST_STUDIO = 10;
+const CREDIT_COST_PREVIEW = 1; 
 
 interface UserProfile {
   id: string;
@@ -48,6 +49,7 @@ interface GenerationRecord {
   id: string | number;
   image_data: string;
   is_unlocked: boolean;
+  is_studio?: boolean;
   settings: GenerationSettings;
   created_at: string;
   seed?: number;
@@ -648,27 +650,27 @@ const ShopModal: React.FC<{
     { 
       id: 'micro', 
       name: 'Micro Pack', 
-      tokens: 10, 
+      tokens: 20, 
       priceInr: 199, 
       badge: 'STARTER',
-      features: ['2 HD Headshots', '4 Preview Headshots', 'No watermarks', 'Priority processing']
+      features: ['4 HD or 2 Super HD', '20 Preview Credits', 'Identity-first AI', 'Priority rendering']
     },
     { 
       id: 'standard', 
       name: 'Standard Suite', 
-      tokens: 50, 
+      tokens: 80, 
       priceInr: 699, 
       isPopular: true,
       badge: 'BEST VALUE',
-      features: ['10 HD Headshots', '20 Preview Headshots', 'Priority processing', 'All premium styles', 'Commercial usage rights']
+      features: ['16 HD or 8 Super HD', '80 Preview Credits', 'Advanced Studio Engine', 'Commercial usage rights', 'Cloud sync features']
     },
     { 
       id: 'enterprise', 
       name: 'Power Enterprise', 
-      tokens: 125, 
+      tokens: 180, 
       priceInr: 1299, 
       badge: 'ULTIMATE',
-      features: ['25 HD Headshots', '50 Preview Headshots', 'Custom Brand Guidelines', 'Dedicated Support', 'Priority AI Rendering Queue']
+      features: ['36 HD or 18 Super HD', '180 Preview Credits', '4K Studio Engine', 'Dedicated Cloud Queue', 'Full History Backup']
     },
   ];
 
@@ -687,7 +689,7 @@ const ShopModal: React.FC<{
           <div className="max-w-3xl mx-auto">
             <div className="mb-6">
               <h2 className="text-xl font-black text-slate-800 dark:text-white tracking-tighter uppercase mb-1">Shared AI Wallet</h2>
-              <p className="text-slate-500 dark:text-slate-400 font-medium text-[9px] tracking-wider uppercase">Credits are shared across all AI Suite ecosystem tools</p>
+              <p className="text-slate-500 dark:text-slate-400 font-medium text-[9px] tracking-wider uppercase">Credits are shared across all ecosystem tools</p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               {packages.map((pkg) => (
@@ -772,7 +774,8 @@ const LandingPage: React.FC<{
   profile: UserProfile | null;
   isGuest?: boolean;
   session: any;
-}> = ({ onGetStarted, onOpenFAQ, onOpenShop, formatPrice, currency, setCurrency, setIsSamplesOpen, setView, profile, isGuest, session }) => {
+  dynamicApps: AppEntry[];
+}> = ({ onGetStarted, onOpenFAQ, onOpenShop, formatPrice, currency, setCurrency, setIsSamplesOpen, setView, profile, isGuest, session, dynamicApps }) => {
   console.log("LandingPage rendering...");
   const isVerified = (profile?.full_name || profile?.email) && session;
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
@@ -811,7 +814,6 @@ const LandingPage: React.FC<{
 
           <div className="flex items-center gap-3 sm:gap-4 shrink-0">
             <div className="hidden md:block">
-              <AISuiteMenu />
             </div>
             {isVerified && !isGuest && (
               <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-[#ecfdf5] border border-[#059669]/10 rounded-full text-[10px] font-black text-[#059669] tracking-widest uppercase">
@@ -1155,9 +1157,9 @@ const LandingPage: React.FC<{
                       <span className="text-xs">AI Credits</span>
                     </td>
                     <td className="p-4 text-center text-lg font-black text-studio-emerald">1</td>
-                    <td className="p-4 text-center text-lg font-black text-studio-emerald">10</td>
-                    <td className="p-4 text-center text-lg font-black text-studio-emerald bg-slate-50/50 dark:bg-slate-900/40 border-x-2 border-studio-emerald/30">50</td>
-                    <td className="p-4 text-center text-lg font-black text-studio-emerald">125</td>
+                    <td className="p-4 text-center text-lg font-black text-studio-emerald">20</td>
+                    <td className="p-4 text-center text-lg font-black text-studio-emerald bg-slate-50/50 dark:bg-slate-900/40 border-x-2 border-studio-emerald/30">80</td>
+                    <td className="p-4 text-center text-lg font-black text-studio-emerald">180</td>
                   </tr>
                   <tr>
                     <td className="p-4 font-bold text-slate-900 dark:text-white flex items-center gap-3">
@@ -1170,16 +1172,16 @@ const LandingPage: React.FC<{
                       <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider leading-tight">2 PREVIEW HEADSHOTS</div>
                     </td>
                     <td className="p-4 text-center">
-                      <div className="font-black text-slate-900 dark:text-white text-xs">2 HD Headshots</div>
-                      <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider leading-tight">4 PREVIEW HEADSHOTS</div>
+                      <div className="font-black text-slate-900 dark:text-white text-xs">4 HD Headshots</div>
+                      <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider leading-tight">10 PREVIEW HEADSHOTS</div>
                     </td>
                     <td className="p-4 text-center bg-slate-50/50 dark:bg-slate-900/40 border-x-2 border-studio-emerald/30">
-                      <div className="font-black text-slate-900 dark:text-white text-xs">10 HD Headshots</div>
-                      <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider leading-tight">20 PREVIEW HEADSHOTS</div>
+                      <div className="font-black text-slate-900 dark:text-white text-xs">16 HD Headshots</div>
+                      <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider leading-tight">30 PREVIEW HEADSHOTS</div>
                     </td>
                     <td className="p-4 text-center">
-                      <div className="font-black text-slate-900 dark:text-white text-xs">25 HD Headshots</div>
-                      <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider leading-tight">50 PREVIEW HEADSHOTS</div>
+                      <div className="font-black text-slate-900 dark:text-white text-xs">36 HD Headshots</div>
+                      <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider leading-tight">100 PREVIEW HEADSHOTS</div>
                     </td>
                   </tr>
                   <tr>
@@ -1957,7 +1959,8 @@ const Header: React.FC<{
   session: any;
   darkMode: boolean;
   onToggleDarkMode: () => void;
-}> = ({ onOpenSupport, onOpenShop, onOpenSamples, onOpenProfile, onGoHome, onLogout, onOpenDashboard, profile, isGuest, session, darkMode, onToggleDarkMode }) => {
+  dynamicApps: AppEntry[];
+}> = ({ onOpenSupport, onOpenShop, onOpenSamples, onOpenProfile, onGoHome, onLogout, onOpenDashboard, profile, isGuest, session, darkMode, onToggleDarkMode, dynamicApps }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -1993,9 +1996,6 @@ const Header: React.FC<{
       </div>
       
       <div className="flex items-center gap-3 sm:gap-4 lg:gap-6 shrink-0">
-        <div className="hidden md:block">
-          <AISuiteMenu />
-        </div>
         {isVerified && !isGuest && (
           <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-[#ecfdf5] border border-[#059669]/10 rounded-full text-[10px] font-black text-[#059669] tracking-widest uppercase animate-pulse-slow">
             <ShieldCheck className="w-3.5 h-3.5" />
@@ -2004,9 +2004,6 @@ const Header: React.FC<{
         )}
 
         <div className="flex items-center gap-2 sm:gap-3" ref={dropdownRef}>
-          <div className="md:hidden">
-            <AISuiteMenu />
-          </div>
           <div className="relative">
             <button 
               onClick={() => setIsDropdownOpen(!isDropdownOpen)} 
@@ -2639,6 +2636,20 @@ const App: React.FC = () => {
   const [generations, setGenerations] = useState<GenerationRecord[]>([]);
   const [activeGen, setActiveGen] = useState<GenerationRecord | null>(null);
   const [originalImage, setOriginalImage] = useState<string | null>(null);
+  const [dynamicApps, setDynamicApps] = useState<AppEntry[]>([]);
+  const [platformConfig, setPlatformConfig] = useState<any>(null);
+  const isSupabaseConfigured = !!import.meta.env.VITE_SUPABASE_URL && !!import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+  // Fetch ecosystem apps once on mount
+  useEffect(() => {
+    if (isSupabaseConfigured) {
+      ecosystemService.fetchApps().then(apps => {
+        console.log('Apps Fetched:', apps.length);
+        setDynamicApps(apps);
+      });
+      ecosystemService.fetchPlatformConfig().then(setPlatformConfig);
+    }
+  }, []);
 
   // Log originalImage changes
   useEffect(() => {
@@ -2769,6 +2780,7 @@ const App: React.FC = () => {
   });
 
   const [consecutivePreviews, setConsecutivePreviews] = useState<number>(0);
+  const [isStudioMode, setIsStudioMode] = useState<boolean>(false);
 
   useEffect(() => {
     localStorage.setItem('studio_previews_used', previewsUsed.toString());
@@ -3498,7 +3510,7 @@ const App: React.FC = () => {
         key: import.meta.env.VITE_RAZORPAY_KEY_ID,
         amount: amount * 100,
         currency: "INR",
-        name: "AI Suite",
+        name: "HeadshotStudioPro",
         description: `Top up ${tokensToAdd} Shared AI Credits`,
         order_id: orderData.orderId,
         handler: async (response: any) => {
@@ -3606,14 +3618,20 @@ const App: React.FC = () => {
       });
       return;
     }
-    
+
     const currentImage = originalImage;
+    const cost = isStudioMode ? CREDIT_COST_STUDIO : CREDIT_COST_HD;
+    const hasTokens = (profile?.tokens ?? 0) >= cost;
     
-    const hasTokens = (profile?.tokens ?? 0) >= 5;
+    // Local copy to ensure consistency during async ops
+    const generationModeIsStudio = isStudioMode;
+
+    // Capture the mode for the specific unlock call
+    const unlockIsStudio = isStudioMode;
 
     if (!hasTokens) { 
       console.warn("handleUnlock: Insufficient credits.", { tokens: profile?.tokens });
-      setToast({ message: "To deliver the highest studio quality, HD Generation requires 5 paid credits from your account.", type: 'error' });
+      setToast({ message: `To deliver the highest studio quality, ${isStudioMode ? 'Studio' : 'HD'} Generation requires ${cost} paid credits.`, type: 'error' });
       handleOpenShop(); 
       setIsConfirmingUnlock(false);
       return; 
@@ -3625,73 +3643,57 @@ const App: React.FC = () => {
     setGenerationProgress(0);
     setError(null);
     
-    console.log("Starting HD generation process for activeGen:", activeGen.id);
+    console.log(`Starting ${isStudioMode ? 'Studio' : 'HD'} generation process for activeGen:`, activeGen.id);
     
-    // Progress simulation for HD generation (usually takes longer)
+    // Progress simulation
     const progressInterval = setInterval(() => {
       setGenerationProgress(prev => {
         if (prev >= 98) return prev;
-        if (prev >= 90) return prev + 0.2; // Slightly faster crawl
+        if (prev >= 90) return prev + 0.2; 
         if (prev >= 60) return prev + 1.2;
         return prev + (prev < 30 ? 3 : 2);
       });
     }, 800);
 
     try {
-      console.log("Checking for API key...");
-      // Check for API Key for premium model inside try-catch
-      // Add guard for window.aistudio
-      const hasKey = (window as any).aistudio ? await (window as any).aistudio.hasSelectedApiKey() : true;
-      console.log("Has API Key:", hasKey);
-      if (!hasKey && (window as any).aistudio) {
-        setToast({ message: "HD Generation requires a paid Gemini API key. Please select your key.", type: 'error' });
-        await (window as any).aistudio.openSelectKey();
-        // Assume success after dialog closes as per guidelines
-      }
-
-      console.log("Calling GeminiService.transformImage with highRes=true...", { 
-        settings: activeGen.settings, 
-        seed: activeGen.seed 
-      });
+      console.log(`Calling GeminiService.transformImage with highRes=true, studio=${isStudioMode}...`);
       
-      const highResResult = await GeminiService.transformImage(currentImage!, activeGen.settings, true, activeGen.seed);
-      console.log("HD Result received, length:", highResResult?.length);
+      const highResResult = await GeminiService.transformImage(currentImage!, activeGen.settings, true, activeGen.seed, false, isStudioMode);
+      console.log("Result received, length:", highResResult?.length);
       
       clearInterval(progressInterval);
       setGenerationProgress(100);
 
       if (isGuest) {
         console.log("Processing guest unlock...");
-        setProfile(p => p ? { ...p, tokens: p.tokens - 5 } : p);
-        const updatedGen = { ...activeGen, image_data: highResResult, is_unlocked: true };
+        setProfile(p => p ? { ...p, tokens: p.tokens - cost } : p);
+        const updatedGen = { ...activeGen, image_data: highResResult, is_unlocked: true, is_studio: isStudioMode };
         setActiveGen(updatedGen);
         setGenerations(prev => [updatedGen, ...prev.filter(g => String(g.id) !== String(activeGen.id))]);
         setDisplayUrl(highResResult);
-        setToast({message: "HD Portrait unlocked using free credits!", type: 'success'});
+        setToast({message: `${isStudioMode ? 'Studio' : 'HD'} Portrait unlocked!`, type: 'success'});
         setIsUnlocking(false);
         setTimeout(() => autoDownloadImage(highResResult), 500);
         return;
       }
 
       console.log("Deducting tokens from Supabase...");
-      const updateData = { tokens: (profile?.tokens ?? 0) - 5 };
+      const updateData = { tokens: (profile?.tokens ?? 0) - cost };
       
       const { error: deductionError } = await supabase.from('profiles').update(updateData).eq('id', session.user.id);
       
       if (!deductionError) {
         console.log("Deduction successful. Uploading to storage...");
-        // Compress HD image before upload
-        const compressedHD = await compressImage(highResResult, 2048, 0.85);
+        // Compress result
+        const compressedResult = await compressImage(highResResult, 2048, 0.85);
         const thumbData = await generateThumbnail(highResResult);
 
-        // Upload HD image to Supabase Storage
-        const storageUrl = await uploadToSupabaseStorage(compressedHD, session.user.id, true);
+        // Upload to Supabase Storage
+        const storageUrl = await uploadToSupabaseStorage(compressedResult, session.user.id, true);
         const thumbUrl = await uploadToSupabaseStorage(thumbData, session.user.id, false, true);
         
-        console.log("Storage upload complete:", { storageUrl, thumbUrl });
-
-        // Universal Logging: Every time a user generates a headshot, log that activity to the app_activity table
-        await logActivity(session.user.id, 5, storageUrl);
+        // Log activity
+        await logActivity(session.user.id, cost, storageUrl);
 
         console.log("Inserting new generation record...");
         const { data: newGen, error: genError } = await supabase.from('generations').insert({ 
@@ -3700,24 +3702,25 @@ const App: React.FC = () => {
           thumbnail_url: thumbUrl,
           is_unlocked: true, 
           settings: activeGen.settings,
-          seed: activeGen.seed
+          seed: activeGen.seed,
+          is_studio: isStudioMode
         }).select().single();
 
         if (!genError && newGen) { 
-          console.log("Generation record created:", newGen.id);
           setGenerations(p => [newGen, ...p.filter(g => String(g.id) !== String(activeGen.id))]); 
           handleSelectGen(newGen); 
           await fetchProfile(); 
-          setToast({message: "HD Portrait unlocked!", type: 'success'});
+          setToast({message: `${isStudioMode ? 'Studio' : 'HD'} Portrait unlocked!`, type: 'success'});
+          setIsStudioMode(false); // RESET AFTER UNLOCK
           setTimeout(() => autoDownloadImage(storageUrl), 500);
         } else {
-          console.warn("Generation record creation failed, using local result:", genError);
-          const updatedGen = { ...activeGen, image_data: highResResult, is_unlocked: true };
+          const updatedGen = { ...activeGen, image_data: highResResult, is_unlocked: true, is_studio: isStudioMode };
           setActiveGen(updatedGen);
           setGenerations(prev => [updatedGen, ...prev.filter(g => String(g.id) !== String(activeGen.id))]);
           setDisplayUrl(highResResult);
           await fetchProfile(); 
-          setToast({message: "Successfully unlocked HD Portrait!", type: 'success'});
+          setToast({message: `Successfully unlocked ${isStudioMode ? 'Studio' : 'HD'} Portrait!`, type: 'success'});
+          setIsStudioMode(false); // RESET AFTER UNLOCK
           setTimeout(() => autoDownloadImage(highResResult), 500);
         }
       } else {
@@ -3731,7 +3734,7 @@ const App: React.FC = () => {
       
       const errMsg = err?.message || String(err || '');
       if (errMsg.includes("Requested entity was not found") || errMsg.includes("permission denied") || errMsg.includes("not found")) {
-        setToast({ message: "HD requires a paid Gemini key. Please select a key from a paid project.", type: 'error' });
+        setToast({ message: "The selected model is not available on this API key. If using the default Free Tier, it may be busy. Selecting your own key in Settings is recommended.", type: 'error' });
         try {
           if ((window as any).aistudio) {
             await (window as any).aistudio.openSelectKey();
@@ -3739,8 +3742,8 @@ const App: React.FC = () => {
         } catch (e) {
           console.warn("Failed to open key selector", e);
         }
-      } else if (errMsg.includes("exhausted") || errMsg.includes("429")) {
-        const msg = "API limit reached. Please wait a moment or check your spend cap.";
+      } else if (errMsg.includes("exhausted") || errMsg.includes("429") || errMsg.includes("quota")) {
+        const msg = "Global Free Quota exceeded. To avoid this, please link your OWN free Gemini key in Settings -> Secrets.";
         setToast({ message: msg, type: 'error' });
         setError(msg);
       } else if (errMsg.includes("demand") || errMsg.includes("503")) {
@@ -3778,83 +3781,93 @@ const App: React.FC = () => {
 
   const generateHeadshot = async (forceHD: boolean | React.MouseEvent = false) => {
     if (isGenerating) return;
+    
+    // We removed the Studio Quality toggle from the UI, so and "Generate" click 
+    // should default to false for isStudioMode to avoid accidental billing.
+    // Master mode is only triggered via the "Unlock" buttons now.
     let isForceHD = forceHD === true;
+    let effectiveStudio = false; 
     
     if (!originalImage) {
       setToast({ message: "Please upload a photo first.", type: 'error' });
       return;
     }
 
-    // Free Preview Logic
+    // Determine generation tier and cost
+    const cost = effectiveStudio ? CREDIT_COST_STUDIO : (isForceHD ? CREDIT_COST_HD : 0);
     const previewsRemaining = profile?.previews_remaining ?? 0;
-    const hasTokensForHD = (profile?.tokens ?? 0) >= 5;
+    const tokens = profile?.tokens ?? 0;
+    const hasTokens = tokens >= cost;
 
-    // Consecutive Preview Utilization Nudge Logic
-    if (!isForceHD) {
-      if (consecutivePreviews >= 5) {
+    // Handle Free Preview -> HD Switch
+    if (cost === 0 && previewsRemaining <= 0) {
+      if (tokens >= CREDIT_COST_HD) {
         isForceHD = true;
         setToast({ 
-          message: "To maintain studio-grade quality after multiple previews, we are generating your next portrait in stunning HD.", 
-          type: 'info' 
+          message: "You've used all your free previews. Switch to HD Portrait.", 
+          type: 'success' 
         });
-      } else if (consecutivePreviews === 4) {
+      } else {
         setToast({ 
-          message: "Great selection! To better utilize your credits, we recommend generating an HD version of your next favorite pose.", 
-          type: 'info' 
+          message: "You've reached your free preview limit. Please purchase credits to continue.", 
+          type: 'error' 
         });
-      }
-    }
-
-    if (!isForceHD) {
-      if (previewsRemaining <= 0) {
-        if (hasTokensForHD) {
-          // Automatically switch to HD if previews are exhausted but user has tokens
-          isForceHD = true;
-          setToast({ 
-            message: "You've used all your free previews. Generating an HD portrait directly.", 
-            type: 'success' 
-          });
-        } else {
-          setToast({ 
-            message: "You've reached your free preview limit. Please purchase credits to continue.", 
-            type: 'error' 
-          });
-          handleOpenShop();
-          return;
-        }
-      }
-    } else {
-      // If manually requesting HD, check tokens
-      if (!hasTokensForHD && !isGuest) {
-        setToast({ message: "To deliver the highest studio quality, HD generation requires paid credits from your account. Please top up your credits to continue.", type: 'error' });
         handleOpenShop();
         return;
       }
     }
 
+    // Verify tokens for paid tiers (HD or Studio)
+    if (cost > 0 && !hasTokens && !isGuest) {
+      setToast({ 
+        message: `This generation requires ${cost} credits. Please top up your wallet to continue.`, 
+        type: 'error' 
+      });
+      handleOpenShop();
+      return;
+    }
+
+    // Mandatory nudge logic for consistent preview users
+    if (cost === 0 && !isForceHD) {
+      if (consecutivePreviews >= 5) {
+        if (tokens >= CREDIT_COST_HD) {
+          isForceHD = true;
+          setToast({ 
+            message: "To maintain studio-grade quality, we are generating your next portrait in stunning HD.", 
+            type: 'info' 
+          });
+        }
+      } else if (consecutivePreviews === 4) {
+        setToast({ 
+          message: "Great selection! We recommend generating an HD version for your next pose.", 
+          type: 'info' 
+        });
+      }
+    }
+
+    // Final isForceHD state for the rest of the function
+    const finalIsHighRes = isForceHD || effectiveStudio;
+
     setIsGenerating(true); 
     setGenerationProgress(0);
     setError(null);
+    setToast(null);
     setDisplayUrl(null);
     setActiveGen(null);
 
-    // Progress simulation for generation
+    // Progress simulation
     const progressInterval = setInterval(() => {
       setGenerationProgress(prev => {
         if (prev >= 98) return prev;
-        if (prev >= 90) return prev + (isForceHD ? 0.3 : 0.4); 
-        if (prev >= 70) return prev + (isForceHD ? 1.5 : 2.0);
-        return prev + (prev < 40 ? (isForceHD ? 4 : 5) : (isForceHD ? 2 : 3));
+        if (prev >= 90) return prev + (finalIsHighRes ? 0.3 : 0.4); 
+        if (prev >= 70) return prev + (finalIsHighRes ? 1.5 : 2.0);
+        return prev + (prev < 40 ? (finalIsHighRes ? 4 : 5) : (finalIsHighRes ? 2 : 3));
       });
-    }, isForceHD ? 700 : 400);
+    }, finalIsHighRes ? 700 : 400);
 
     try {
       const hasKey = (window as any).aistudio ? await (window as any).aistudio.hasSelectedApiKey() : true;
-      if (!hasKey && (window as any).aistudio) {
-        setToast({ message: `${isForceHD ? 'HD Portrait' : 'Portrait'} generation requires a paid Gemini API key. Please select your key.`, type: 'error' });
-        await (window as any).aistudio.openSelectKey();
-      }
-
+      
       if (!isVerified) {
         const count = await GeminiService.verifyHumanCount(originalImage);
         if (count !== 'ONE') throw new Error("Image must contain exactly one person.");
@@ -3862,37 +3875,46 @@ const App: React.FC = () => {
       }
       
       const seed = Math.floor(Math.random() * 1000000);
-      const generationSettings = settings;
-      const result = await GeminiService.transformImage(originalImage, generationSettings, isForceHD, seed, !isForceHD);
-      const finalResult = isForceHD ? result : await applyWatermark(result, generationSettings.background === BackgroundStyle.TRANSPARENT);
+      const generationSettings = { ...settings };
+      
+      // Perform transformation
+      const result = await GeminiService.transformImage(
+        originalImage, 
+        generationSettings, 
+        finalIsHighRes, 
+        seed, 
+        !finalIsHighRes,
+        effectiveStudio
+      );
+      
+      const finalResult = finalIsHighRes ? result : await applyWatermark(result, generationSettings.background === BackgroundStyle.TRANSPARENT);
       
       clearInterval(progressInterval);
       setGenerationProgress(100);
 
-      if (isForceHD) {
+      if (finalIsHighRes) {
         setConsecutivePreviews(0);
         if (isGuest) {
-          setProfile(p => p ? { ...p, tokens: p.tokens - 5 } : p);
-          const newGen = { id: Date.now(), user_id: 'guest', image_data: finalResult, is_unlocked: true, settings: generationSettings, seed, created_at: new Date().toISOString() };
+          setProfile(p => p ? { ...p, tokens: p.tokens - cost } : p);
+          const newGen = { id: Date.now(), user_id: 'guest', image_data: finalResult, is_unlocked: true, settings: generationSettings, seed, created_at: new Date().toISOString(), is_studio: isStudioMode };
           setGenerations(prev => [newGen, ...prev]);
           handleSelectGen(newGen);
-          setToast({message: "HD Portrait generated using free credits!", type: 'success'});
+          setToast({message: `${isStudioMode ? 'Studio Quality' : 'HD'} Portrait generated!`, type: 'success'});
           setTimeout(() => autoDownloadImage(finalResult), 500);
           return;
         }
 
-        const updateData = { tokens: (profile?.tokens ?? 0) - 5 };
-
+        const updateData = { tokens: tokens - cost };
         const { error: deductionError } = await supabase.from('profiles').update(updateData).eq('id', session?.user?.id);
         
         if (!deductionError) {
-          const compressedHD = await compressImage(finalResult, 2048, 0.85);
+          const compressedResult = await compressImage(finalResult, 2048, 0.85);
           const thumbData = await generateThumbnail(finalResult);
 
-          const storageUrl = await uploadToSupabaseStorage(compressedHD, session!.user.id, true);
+          const storageUrl = await uploadToSupabaseStorage(compressedResult, session!.user.id, true);
           const thumbUrl = await uploadToSupabaseStorage(thumbData, session!.user.id, false, true);
 
-          await logActivity(session!.user.id, 5, storageUrl);
+          await logActivity(session!.user.id, cost, storageUrl);
 
           const { data: newGen, error: genError } = await supabase.from('generations').insert({ 
             user_id: session!.user.id, 
@@ -3900,22 +3922,22 @@ const App: React.FC = () => {
             thumbnail_url: thumbUrl,
             is_unlocked: true, 
             settings: generationSettings,
-            seed
+            seed,
+            is_studio: isStudioMode
           }).select().single();
 
           if (!genError && newGen) { 
             setGenerations(p => [newGen, ...p]); 
             handleSelectGen(newGen); 
             await fetchProfile(); 
-            setToast({message: "HD Portrait generated!", type: 'success'});
+            setToast({message: `${isStudioMode ? 'Studio Quality' : 'HD'} Portrait generated!`, type: 'success'});
             setTimeout(() => autoDownloadImage(storageUrl), 500);
           } else {
-            const fallbackGen = { id: Date.now(), user_id: session!.user.id, image_data: finalResult, is_unlocked: true, settings: generationSettings, seed, created_at: new Date().toISOString() };
+            const fallbackGen = { id: Date.now(), user_id: session!.user.id, image_data: finalResult, is_unlocked: true, settings: generationSettings, seed, created_at: new Date().toISOString(), is_studio: isStudioMode };
             setGenerations(prev => [fallbackGen, ...prev]);
             handleSelectGen(fallbackGen);
             await fetchProfile(); 
-            setToast({message: "Successfully generated HD Portrait!", type: 'success'});
-            setTimeout(() => autoDownloadImage(finalResult), 500);
+            setToast({message: `Successfully generated ${isStudioMode ? 'Studio' : 'HD'} Portrait!`, type: 'success'});
           }
         }
         return;
@@ -3981,8 +4003,8 @@ const App: React.FC = () => {
       const errMsg = err?.message || String(err || '');
       let userMessage = formatErrorMessage(err, "An unexpected error occurred during generation.");
       
-      if (status === 429 || errMsg.includes('exhausted')) {
-        userMessage = "API limit reached. Please wait a moment or check your spend cap.";
+      if (status === 429 || errMsg.toLowerCase().includes('quota') || errMsg.toLowerCase().includes('limit')) {
+        userMessage = "We've hit a temporary API limit. Retrying with a secondary model... or please add your own 'MY_GEMINI_KEY' in the Secrets tab for unlimited generations.";
       } else if (status === 503 || errMsg.includes('demand')) {
         const isPremium = (profile?.tokens ?? 0) > 0 || !!profile?.plan;
         userMessage = isPremium 
@@ -3991,7 +4013,7 @@ const App: React.FC = () => {
       } else if (status === 500) {
         userMessage = "The AI encountered an internal error. Please try a different photo or try again later.";
       } else if (status === 403 || errMsg.includes('permission denied') || errMsg.includes('Requested entity was not found') || errMsg.includes('not found')) {
-        userMessage = "This feature requires a paid Gemini API key. Please select a key from a paid project.";
+        userMessage = "The selected model is not available on this API key. If using the default Free Tier, it may be busy. Adding your own key as 'MY_GEMINI_KEY' in Secrets is recommended.";
         // Trigger key selector as per instructions for 'not found'
         try {
           (window as any).aistudio.openSelectKey();
@@ -4138,6 +4160,7 @@ const App: React.FC = () => {
         profile={profile}
         isGuest={isGuest}
         session={session}
+        dynamicApps={dynamicApps}
       />
     );
     
@@ -4158,6 +4181,7 @@ const App: React.FC = () => {
           session={session}
           darkMode={darkMode}
           onToggleDarkMode={() => setDarkMode(!darkMode)}
+          dynamicApps={dynamicApps}
         />
         
         {view === 'dashboard' ? (
@@ -4178,7 +4202,7 @@ const App: React.FC = () => {
             MAX_FREE_PREVIEWS={MAX_FREE_PREVIEWS}
           />
         ) : (
-          <main className="flex-grow grid lg:grid-cols-[28%_72%] items-start max-w-[1800px] mx-auto w-full">
+          <main className="flex-grow grid lg:grid-cols-[30%_70%] items-start max-w-[1800px] mx-auto w-full">
             <input 
               type="file" 
               ref={fileInputRef} 
@@ -4953,7 +4977,7 @@ const App: React.FC = () => {
                     ) : (
                       <>
                         <Sparkles className="w-5 h-5" />
-                        <span>Generate Portrait</span>
+                        <span>{isStudioMode ? `Generate Studio Portrait (10 Credits)` : 'Generate Portrait'}</span>
                       </>
                     )}
                   </button>
@@ -4995,10 +5019,10 @@ const App: React.FC = () => {
               <div className="space-y-8 w-full">
                 {displayUrl ? (
                   <div className="bg-white dark:bg-slate-900 rounded-3xl overflow-hidden relative group shadow-2xl shadow-slate-200/50 dark:shadow-black/50 border border-slate-100 dark:border-slate-800">
-                    <div className={`aspect-square relative ${settings.background === BackgroundStyle.TRANSPARENT ? 'checkerboard' : 'bg-slate-50 dark:bg-slate-800/50'}`}>
+                    <div className={`aspect-[3/4] relative ${settings.background === BackgroundStyle.TRANSPARENT ? 'checkerboard' : 'bg-slate-50 dark:bg-slate-800/50'}`}>
                       <img 
                         src={displayUrl} 
-                        className="w-full h-full object-contain transition-transform duration-700 group-hover:scale-[1.02]" 
+                        className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.02]" 
                         style={{ 
                           filter: `brightness(${imageFilters.brightness}%) contrast(${imageFilters.contrast}%) saturate(${imageFilters.saturation - (imageFilters.vintage * 0.3)}%) grayscale(${imageFilters.grayscale}%) sepia(${imageFilters.vintage * 0.6}%) hue-rotate(${imageFilters.hue - (imageFilters.vintage * 0.2)}deg)` 
                         }}
@@ -5042,18 +5066,18 @@ const App: React.FC = () => {
                             <motion.div 
                               initial={{ scale: 0.9, opacity: 0, y: 20 }}
                               animate={{ scale: 1, opacity: 1, y: 0 }}
-                              className="flex flex-col items-center gap-6 bg-white/80 dark:bg-slate-900/80 p-8 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 mx-4 max-w-[320px] backdrop-blur-xl"
+                              className="flex flex-col items-center gap-6 bg-white/95 dark:bg-slate-900/95 p-8 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-slate-200 dark:border-slate-800 mx-4 max-w-[360px] backdrop-blur-2xl"
                             >
-                              <div className="w-16 h-16 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl flex items-center justify-center text-emerald-500 shadow-inner">
+                              <div className="w-16 h-16 bg-studio-emerald/10 text-studio-emerald rounded-2xl flex items-center justify-center shadow-inner">
                                 <ShieldCheck className="w-8 h-8" />
                               </div>
-                              <div className="text-center space-y-2">
-                                <h3 className="text-lg font-black tracking-tight text-slate-900 dark:text-white">Unlock HD Portrait</h3>
-                                <p className="text-xs font-bold text-slate-400 dark:text-slate-500 leading-relaxed">
-                                  Experience your portrait in stunning high definition. This will use <span className="text-emerald-500 font-black">5 credits</span>.
+                              <div className="text-center space-y-3">
+                                <h3 className="text-xl font-black tracking-tight text-slate-900 dark:text-white leading-tight">Unlock Professional Portrait</h3>
+                                <p className="text-sm font-bold text-slate-600 dark:text-slate-400 leading-relaxed px-2">
+                                  Select the quality tier for your final portrait. Credits will be deducted from your wallet.
                                 </p>
                                 {!originalImage && (
-                                  <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 rounded-2xl border border-red-100 dark:border-red-900/30">
+                                  <div className="mt-2 p-2 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-100 dark:border-red-900/30">
                                     <p className="text-[10px] text-red-500 font-black uppercase tracking-widest animate-pulse">Source Photo Required</p>
                                   </div>
                                 )}
@@ -5068,18 +5092,57 @@ const App: React.FC = () => {
                                       fileInputRef.current?.click();
                                       return;
                                     }
-                                    handleUnlock(); 
+                                    setIsStudioMode(false);
+                                    setTimeout(() => handleUnlock(), 10);
                                   }}
-                                  className={`w-full h-12 ${!originalImage ? 'bg-amber-500 hover:bg-amber-600' : 'bg-[#10b981] hover:bg-[#36a372]'} text-white rounded-xl font-semibold text-sm shadow-sm transition-all active:scale-[0.98]`}
+                                  className="w-full text-left p-4 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 hover:border-studio-emerald hover:bg-studio-emerald/5 rounded-2xl transition-all group"
                                 >
-                                  {!originalImage ? 'Upload Source' : 'Confirm Unlock'}
+                                  <div className="flex justify-between items-center">
+                                    <div className="space-y-1">
+                                      <p className="text-[14px] font-black text-slate-900 dark:text-white uppercase tracking-tight">Unlock HD</p>
+                                      <p className="text-[11px] font-bold text-slate-600 dark:text-slate-300">Fast, High-Resolution (5 Credits)</p>
+                                    </div>
+                                    <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-studio-emerald transition-colors" />
+                                  </div>
                                 </button>
+
+                                <button 
+                                  type="button"
+                                  onClick={(e) => { 
+                                    e.preventDefault();
+                                    e.stopPropagation(); 
+                                    if (!originalImage) {
+                                      fileInputRef.current?.click();
+                                      return;
+                                    }
+                                    setIsStudioMode(true);
+                                    setTimeout(() => handleUnlock(), 10);
+                                  }}
+                                  className="w-full text-left p-4 bg-studio-emerald text-white rounded-2xl shadow-lg shadow-studio-emerald/20 transition-all hover:brightness-110 group relative overflow-hidden"
+                                >
+                                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:animate-shimmer" />
+                                  <div className="flex justify-between items-center relative z-10">
+                                    <div className="space-y-1">
+                                      <div className="flex items-center gap-1.5">
+                                        <p className="text-[14px] font-black uppercase tracking-tight">Unlock Super HD</p>
+                                        <Award className="w-3.5 h-3.5 text-white" />
+                                      </div>
+                                      <p className="text-[11px] font-bold text-white leading-snug max-w-[200px]">
+                                        Ultimate Detail (10 Credits)
+                                        <br />
+                                        <span className="opacity-90 font-medium text-[10px]">Ray-traced lighting • Subsurface skin scattering • 4K Engine</span>
+                                      </p>
+                                    </div>
+                                    <ChevronRight className="w-5 h-5 text-white group-hover:translate-x-1 transition-transform" />
+                                  </div>
+                                </button>
+                                
                                 <button 
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setIsConfirmingUnlock(false);
                                   }}
-                                  className="w-full h-10 text-slate-400 dark:text-slate-500 font-semibold text-xs hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+                                  className="w-full h-8 text-slate-500 dark:text-slate-400 font-bold text-xs hover:text-slate-800 dark:hover:text-slate-200 transition-colors mt-1 uppercase tracking-widest"
                                 >
                                   Maybe Later
                                 </button>
@@ -5105,7 +5168,7 @@ const App: React.FC = () => {
                                   Re-upload Source to Unlock
                                 </>
                               ) : (
-                                'Unlock Master Portrait (5 Credits)'
+                                'Unlock Master Portrait'
                               )}
                             </button>
                           )}
@@ -5142,7 +5205,7 @@ const App: React.FC = () => {
                               }}
                               className="flex-1 sm:flex-none bg-[#10b981] text-white px-4 h-9 rounded-md font-semibold text-xs flex items-center justify-center transition-all hover:bg-[#2d8a60]"
                             >
-                              Unlock HD Portrait
+                              Unlock HD
                             </button>
                           )}
                           
@@ -5445,7 +5508,8 @@ const App: React.FC = () => {
                   </h3>
                   <p className="text-[9px] font-semibold text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
                     <ShieldCheck className="w-3 h-3 text-[#10b981]" /> 
-                    Privacy: Previews kept for 5 days, HD Portraits for 15 days. Source photos are never saved.
+                    <span className="text-studio-emerald opacity-80">Privacy First:</span> 
+                    Previews stored 5d, <span className="font-bold text-slate-700 dark:text-slate-200">HD Portraits stored 15d</span> for your security.
                   </p>
                 </div>
               </div>
@@ -5455,9 +5519,17 @@ const App: React.FC = () => {
                   <div 
                     key={gen.id} 
                     onClick={() => handleSelectGen(gen)} 
-                    className={`relative group aspect-square rounded-lg overflow-hidden cursor-pointer border-2 transition-all hover:scale-105 shadow-sm ${activeGen?.id === gen.id ? 'border-[#10b981]' : 'border-white dark:border-slate-800'}`}
+                    className={`relative group aspect-[3/4] rounded-lg overflow-hidden cursor-pointer border-2 transition-all hover:scale-105 shadow-sm ${activeGen?.id === gen.id ? 'border-[#10b981]' : 'border-white dark:border-slate-800'}`}
                   >
-                    <img src={gen.thumbnail_url || gen.image_data} className="w-full h-full object-cover" referrerPolicy="no-referrer" loading="lazy" />
+                    <img src={gen.image_data || gen.thumbnail_url} className="w-full h-full object-cover" referrerPolicy="no-referrer" loading="lazy" />
+                    
+                    {gen.is_unlocked && (
+                      <div className={`absolute top-2 left-2 px-2 py-0.5 ${gen.is_studio ? 'bg-amber-500' : 'bg-studio-emerald'} text-white text-[8px] font-black rounded flex items-center gap-1 shadow-lg z-10`}>
+                        {gen.is_studio ? <Award className="w-2.5 h-2.5" /> : <Sparkles className="w-2.5 h-2.5" />}
+                        {gen.is_studio ? 'SUPER HD' : 'HD'}
+                      </div>
+                    )}
+
                     <button 
                       onClick={(e) => { e.stopPropagation(); deleteGeneration(gen.id); }}
                       className="absolute top-2 right-2 p-1.5 bg-red-500/90 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-all hover:bg-red-600 shadow-lg"
@@ -5483,16 +5555,16 @@ const App: React.FC = () => {
               
               {generations.length === 0 && (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                  <div className="aspect-square rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-400 dark:text-slate-500">
+                  <div className="aspect-[3/4] rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-400 dark:text-slate-500">
                     <Camera className="w-8 h-8" />
                   </div>
-                  <div className="aspect-square rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-400 dark:text-slate-500">
+                  <div className="aspect-[3/4] rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-400 dark:text-slate-500">
                     <Camera className="w-8 h-8" />
                   </div>
-                  <div className="aspect-square rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-400 dark:text-slate-500">
+                  <div className="aspect-[3/4] rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-400 dark:text-slate-500">
                     <Camera className="w-8 h-8" />
                   </div>
-                  <div className="aspect-square rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-400 dark:text-slate-500">
+                  <div className="aspect-[3/4] rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-400 dark:text-slate-500">
                     <Camera className="w-8 h-8" />
                   </div>
                 </div>

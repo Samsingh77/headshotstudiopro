@@ -1,20 +1,66 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# HeadshotStudioPro
 
-# Run and deploy your AI Studio app
+Transform casual photos into professional, studio-quality headshots. This application uses advanced AI to preserve your identity while enhancing lighting, attire, and backgrounds to create perfect corporate portraits for LinkedIn and professional branding.
 
-This contains everything you need to run your app locally.
+## Features
 
-View your app in AI Studio: https://ai.studio/apps/fec5b0f4-6101-44b9-afc9-7ef87c5eed18
+- **AI-Powered Generation**: Uses Gemini flash-image models for high-fidelity headshots.
+- **Credit-Based System**: Integrated wallet and credit system for unlocking high-definition results.
+- **Tiered Quality**:
+  - **HD**: Fast, sharp generation for quick professional updates.
+  - **Super HD**: Premium studio quality with medium-format camera simulation, ray-traced lighting, and advanced skin texture rendering.
+- **Interactive Studio Mode**: Real-time background and style adjustments.
+- **Professional Editor**: Integrated cropping and refinement tools.
 
-## Run Locally
+## Tech Stack
 
-**Prerequisites:**  Node.js
+- **Frontend**: React, Vite, Tailwind CSS, Framer Motion.
+- **Backend**: Node.js, Express (Full-stack integration).
+- **AI**: Google Gemini API.
+- **Database**: Firebase Firestore (for user profiles and generation history).
+- **Storage**: Firebase Storage (for images).
+- **Authentication**: Firebase Authentication.
 
+## Getting Started
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+### Prerequisites
+
+- Node.js (v18+)
+- npm or yarn
+- Firebase Project
+
+### Environment Variables
+
+Create a `.env` file based on `.env.example`:
+
+```env
+GEMINI_API_KEY=your_gemini_api_key
+VITE_FIREBASE_API_KEY=your_firebase_key
+...
+```
+
+### Installation
+
+```bash
+npm install
+```
+
+### Development
+
+```bash
+npm run dev
+```
+
+### Build
+
+```bash
+npm run build
+```
+
+## Sitemap & SEO
+
+- `sitemap.xml` and `robots.txt` are located in the `public/` directory.
+
+## License
+
+MIT
