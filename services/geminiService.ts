@@ -1,4 +1,4 @@
-import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
+import axios from "axios";
 import { AppStyle, BackgroundStyle, ClothingChoice, ClothingStyle, GenerationSettings, TieColor, BodyPose, Expression, LightingOption, Wardrobe, PersonType, DoctorCoatColor, StethoscopePosition } from "../types";
 
 /**
@@ -8,7 +8,7 @@ export class GeminiService {
   /**
    * Helper to execute Gemini calls with exponential backoff retry logic and timeout.
    */
-  private static async withRetry<T>(fn: () => Promise<T>, maxRetries: number = 3, timeoutMs: number = 100000): Promise<T> {
+  private static async withRetry<T>(fn: () => Promise<T>, maxRetries: number = 3, timeoutMs: number = 120000): Promise<T> {
     let lastError: any;
     // Increase retries for 503 (high demand) to be more resilient
     const actualMaxRetries = maxRetries; 
@@ -21,12 +21,14 @@ export class GeminiService {
         return await Promise.race([fn(), timeoutPromise]);
       } catch (error: any) {
         lastError = error;
-        const status = error?.status || error?.code;
+        const status = error?.status || error?.code || error?.response?.status;
+        const errMsg = error?.message || error?.response?.data?.error?.message || "";
+        
         const isRetryable = status === 429 || status === 500 || status === 503 || 
-                           error?.message?.includes('exhausted') || 
-                           error?.message?.includes('demand') ||
-                           error?.message?.includes('timed out') ||
-                           error?.message?.includes('fetch') ||
+                           errMsg.toLowerCase().includes('exhausted') || 
+                           errMsg.toLowerCase().includes('demand') ||
+                           errMsg.toLowerCase().includes('timed out') ||
+                           errMsg.toLowerCase().includes('fetch') ||
                            error?.name === 'AbortError';
         
         // If it's a 503, we can try even more times (up to 5 total attempts)
@@ -51,24 +53,51 @@ export class GeminiService {
    * Returns 'ZERO', 'ONE', or 'MULTIPLE'.
    */
   static async verifyHumanCount(base64Image: string): Promise<'ZERO' | 'ONE' | 'MULTIPLE'> {
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
     try {
       const [header, data] = base64Image.split(',');
       const mimeType = header.match(/:(.*?);/)?.[1] || 'image/jpeg';
-
-      const response = await this.withRetry(() => ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: {
+      const model = 'gemini-3-flash-preview'; // Use the latest stable model for verification
+      const contents = [
+        {
+          role: 'user',
           parts: [
             { inlineData: { data, mimeType } },
             { text: "Examine this image. How many clearly visible human beings are in this photo? Reply with exactly one word: 'ZERO', 'ONE', or 'MULTIPLE'." }
           ]
-        },
-      }));
-      const text = response.text?.trim().toUpperCase() || '';
-      if (text.includes('MULTIPLE')) return 'MULTIPLE';
-      if (text.includes('ONE')) return 'ONE';
-      return 'ZERO';
+        }
+      ];
+
+      const fetchResult = async () => {
+        try {
+          const res = await axios.post('/api/gemini-proxy', { 
+            model, 
+            contents,
+            usePremiumKey: false // Verification is always non-premium
+          }, { timeout: 60000 }); // Increased from 30s to 60s
+          const raw = res.data;
+          
+          if (raw?.candidates?.[0]?.content?.parts?.[0]?.text) {
+            return { text: raw.candidates[0].content.parts[0].text.trim() };
+          }
+          return raw;
+        } catch (e: any) {
+          console.warn("Verification proxy failed, falling back to server-side logic", e.message);
+          throw e; // Let withRetry handle it
+        }
+      };
+
+      const response = (await this.withRetry(() => fetchResult())) as any;
+      const text = (response?.text || response?.candidates?.[0]?.content?.parts?.[0]?.text || '').toUpperCase();
+      
+      console.log(">>> Human Verification Result:", text);
+      
+      // Be more lenient: if it's not explicitly 'MULTIPLE', assume 'ONE' or 'ZERO' but allow 'ONE'
+      if (text.includes('MULTIPLE') || text.includes('MANY') || text.includes('GROUP')) return 'MULTIPLE';
+      if (text.includes('ONE') || text.includes('1 ') || text.includes('PERSON') || text.includes('SINGLE')) return 'ONE';
+      
+      // If the AI is confused but returned something, and it's not obviously multiple, let it slide as 'ONE'
+      // to avoid blocking the user due to AI inconsistency
+      return 'ONE'; 
     } catch (e) {
       console.error("Verification failed", e);
       return 'ONE'; // Graceful fallback to allow user to proceed
@@ -83,19 +112,17 @@ export class GeminiService {
     settings: GenerationSettings,
     highRes: boolean = false,
     seed?: number,
-    isThumbnail: boolean = false
+    isThumbnail: boolean = false,
+    isStudio: boolean = false
   ): Promise<string> {
-    // Always prefer the user-selected API key (process.env.API_KEY) for paid models like 3.1
-    // GEMINI_API_KEY is the platform's free key which may not have access to paid image models.
-    const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error("Gemini API key is missing. Please select a key from a paid project.");
-    }
-    const ai = new GoogleGenAI({ apiKey: apiKey as string });
-    // Use 3.1 for both to ensure consistency between preview and master
-    // Use 2.5 for free thumbnails
-    const primaryModel = 'gemini-3.1-flash-image-preview';
-    const fallbackModel = 'gemini-2.5-flash-image';
+    // Use specialized high-quality image models
+    const primaryModel = 'gemini-2.5-flash-image'; // Essential Preview
+    const hdModel = 'gemini-3.1-flash-image-preview'; // High Definition 
+    const studioModel = 'gemini-3-pro-image-preview'; // Masterclass / Studio Quality
+    const fallbackModel = 'gemini-3.1-flash-image-preview'; 
+    
+    // Choose the model based on requested quality
+    let modelToUse = isStudio ? studioModel : (highRes ? hdModel : primaryModel);
     
     const stylePrompts: Record<AppStyle, string> = {
       [AppStyle.AUTO]: "High-authority, clean executive appearance with strong, confident lighting.",
@@ -130,24 +157,24 @@ export class GeminiService {
       [BackgroundStyle.ALL]: "CRITICAL INSTRUCTION: Generate a 2x2 photo grid (collage) of the same person (2 columns, 2 rows). Top row (left to right): 1. Charcoal Textured. 2. Soft Grey. Bottom row (left to right): 3. Office Blur. 4. Warm Abstract. MANDATORY: Clearly write the exact text of the background type (\"CHARCOAL\", \"SOFT GREY\", \"OFFICE BLUR\", \"WARM ABSTRACT\") in very small, subtle, clean typography at the bottom center of each respective image panel. Do not use giant or oversized text."
     };
 
-    const lightingPrompt = "Apply professional Butterfly lighting (Paramount lighting), creating a small shadow under the nose and evenly illuminating both sides of the face for a high-fashion, symmetrical look.";
+    const lightingPrompt = "Apply professional Butterfly lighting (Paramount lighting) with a 3:1 lighting ratio. This should create an elegant shadow under the nose while evenly illuminating both sides of the face. Use a subtle fill light for the neck to ensure depth. The illumination must look organic and warm, as if captured in a high-end studio.";
 
     const getClothingPrompt = () => {
-      if (settings.wardrobe === Wardrobe.ORIGINAL || settings.clothingChoice === ClothingChoice.ORIGINAL) return "Keep original clothing.";
+      if (settings.wardrobe === Wardrobe.ORIGINAL || settings.clothingChoice === ClothingChoice.ORIGINAL) return "Keep original clothing with natural fabric textures.";
       
       const colorMap: Record<ClothingStyle, string> = {
-        [ClothingStyle.AUTO]: "professional business color",
-        [ClothingStyle.NAVY_BLUE]: "navy blue",
-        [ClothingStyle.CHARCOAL_GRAY]: "charcoal gray",
-        [ClothingStyle.BLACK]: "black",
-        [ClothingStyle.LIGHT_GRAY]: "light gray",
-        [ClothingStyle.TEXTURED_BLUE]: "textured blue",
-        [ClothingStyle.OLIVE_GREEN]: "olive green",
-        [ClothingStyle.BURGUNDY]: "deep burgundy",
-        [ClothingStyle.DARK_BROWN]: "dark brown",
-        [ClothingStyle.TAN_BEIGE]: "tan / beige",
-        [ClothingStyle.SLATE_GRAY]: "slate gray",
-        [ClothingStyle.CUSTOM]: "custom color",
+        [ClothingStyle.AUTO]: "professional business color with natural fabric weave",
+        [ClothingStyle.NAVY_BLUE]: "navy blue with realistic wool texture",
+        [ClothingStyle.CHARCOAL_GRAY]: "charcoal gray with visible fabric grain",
+        [ClothingStyle.BLACK]: "black with subtle silk or wool sheen",
+        [ClothingStyle.LIGHT_GRAY]: "light gray with natural creases",
+        [ClothingStyle.TEXTURED_BLUE]: "textured blue with visible linen or cotton weave",
+        [ClothingStyle.OLIVE_GREEN]: "olive green with earthy fabric texture",
+        [ClothingStyle.BURGUNDY]: "deep burgundy with rich material depth",
+        [ClothingStyle.DARK_BROWN]: "dark brown with leather or heavy cotton texture",
+        [ClothingStyle.TAN_BEIGE]: "tan / beige with soft natural texture",
+        [ClothingStyle.SLATE_GRAY]: "slate gray with professional matte finish",
+        [ClothingStyle.CUSTOM]: "custom color with realistic fabric rendering",
       };
       
       const color = settings.useCustomSuitColor 
@@ -200,22 +227,22 @@ export class GeminiService {
     const getBeautyPrompt = () => {
       let prompt = "";
       if (settings.beautyFilter > 0) {
-        prompt += `Apply a professional beauty enhancement (level ${settings.beautyFilter}/100), enhancing natural skin radiance with realistic subsurface scattering for a vibrant, healthy skin glow while strictly maintaining original skin tones. Ensure the face looks lively and naturally brightened with professional studio luminosity. `;
+        prompt += `Apply subtle high-end retouching (level ${settings.beautyFilter}/100), focusing on natural skin luminosity. Preserve all unique facial micro-features. `;
       }
       if (settings.smoothing > 0) {
-        prompt += `Apply professional face smoothing (level ${settings.smoothing}/100) to reduce blemishes. CRITICAL: The skin MUST maintain ultra-realistic micro-textures, pores, and fine details. It should NOT look waxy or "plastic". `;
+        prompt += `Apply sophisticated skin smoothing (level ${settings.smoothing}/100) while strictly preserving 100% of the natural skin grain and micro-pores. No waxy look. `;
       } else {
-        prompt += "Maintain ultra-realistic natural skin micro-textures, pores, and fine details with natural skin translucency and organic imperfections for maximum realism. ";
+        prompt += "DELIVER RAW PHOTOGRAPHIC TEXTURE: The skin MUST show high-resolution details including pores and fine natural textures. Avoid all 'AI-smooth' or 'plastic' look. ";
       }
 
       if (settings.eyeEnhancement) {
-        prompt += "Apply professional eye enhancement: sharpen the iris, enhance natural catchlights for a vibrant, 'alive' look, and ensure the eyes look bright, clear, and full of life. ";
+        prompt += "Sharp focus on the pupils with natural catchlights. The eyes must look sharp and biologically accurate. ";
       }
       
       // Face Lighting / Fill Light logic
       const leftLighting = settings.faceLeftLighting ?? 50;
       const rightLighting = settings.faceRightLighting ?? 50;
-      prompt += `Apply precise studio lighting control: Face(Left) Lighting at ${leftLighting}/100 and Face(Right) Lighting at ${rightLighting}/100. Use soft, wrap-around light to eliminate dullness and create a vibrant, high-end professional look. The illumination must be flattering, preserving natural facial contours while ensuring the face looks bright and energetic. `;
+      prompt += `Precision studio lighting: Face(Left) at ${leftLighting}/100 and Face(Right) at ${rightLighting}/100. `;
       
       if (settings.enableAdditionalSettings) {
         // Additional Settings
@@ -230,7 +257,7 @@ export class GeminiService {
         }
       }
 
-      prompt += "CRITICAL: The generated portrait MUST maintain a 100% accurate resemblance to the person in the source image. ";
+      prompt += "UNCOMPROMISING IDENTITY: The person must be exactly the same as in the source image. ";
       
       return prompt;
     };
@@ -238,15 +265,15 @@ export class GeminiService {
     const getPosePrompt = () => {
       let prompt = "";
       if (settings.bodyPose === BodyPose.AUTO) {
-        prompt += "Use a professional, standard head-and-shoulders framing that best suits the subject.";
+        prompt += "Use a professional, standard head-and-shoulders framing. Focus primarily on the face and upper shoulders. ";
       } else if (settings.bodyPose === BodyPose.FULL_FRONT) {
-        prompt += "Generate a straight-on, full front-facing view. The subject's body and face must point directly at the camera. The framing MUST crop exactly at the mid-torso/waist level (blue line framing).";
+        prompt += "Generate a straight-on, full front-facing view. The subject's body and face must point directly at the camera. MANDATORY CROP: This MUST be a tight headshot. The image MUST terminate at the upper chest level. ABSOLUTELY NO WAIST, STOMACH, OR LOWER BODY. The face should occupy approximately 60% of the vertical frame height. ";
       } else if (settings.bodyPose === BodyPose.SIDE_FRONT) {
-        prompt += "CRITICAL: Generate a side-angled view (3/4 profile). The subject's body and head MUST be turned slightly to the side, while their eyes look directly at the camera. Do NOT generate a straight-on full front view. The framing MUST crop exactly at the mid-torso/waist level (blue line framing).";
+        prompt += "STRICT MANDATE: Generate a side-angled view (3/4 profile). The subject's torso and head MUST be turned 45 degrees to the side, while their eyes look directly at the camera. Do NOT generate a straight-on front view. MANDATORY CROP: The image MUST terminate at the upper chest level. ABSOLUTELY NO WAIST OR LOWER BODY. ";
       } else if (settings.bodyPose === BodyPose.ZOOM_VIEW || settings.bodyPose === BodyPose.CLOSE_UP) {
-        prompt += "Generate a tight front-facing view. The framing MUST crop exactly just below the shoulders/upper-chest level (red line framing), focusing heavily on the face.";
+        prompt += "Generate a tight professional ZOOM HEADSHOT. MANDATORY: The ENTIRE head, hair, and neck MUST be fully visible and centered. The image should terminate at the upper shoulders. The face should be the dominant subject, occupying 75-80% of the frame. STATED REQUIREMENT: The full head (top of hair to chin) must be cleanly contained with breathing room (headroom). Do NOT crop the hair. ";
       } else if (settings.bodyPose === BodyPose.THREE_QUARTER) {
-        prompt += "Generate a professional three-quarter length portrait. The framing MUST crop exactly at the mid-thigh or knee level (green line framing), showing more of the body.";
+        prompt += "Generate a professional three-quarter length portrait. MANDATORY CROP: The image MUST terminate at the mid-thigh or knee level. This is the ONLY pose allowed to show the lower torso and suit jacket down to the thighs. ";
       }
       return prompt;
     };
@@ -273,21 +300,36 @@ export class GeminiService {
       - Base Expression: ${settings.enableSmile ? settings.expression : 'Natural/Serious'}
       - Overall Style: ${stylePrompts[settings.style]}
 
-      1. MOUTH & TEETH CONTROL (HIGHEST PRIORITY): 
+      1. PHOTOGRAPHIC REALISM (HIGHEST PRIORITY):
+         - This MUST look like a genuine RAW photograph from a Canon EOS R5 or Sony A7R V.
+         - NO "AI ART" SMOOTHNESS. NO PLASTIC TEXTURES. NO PAINTING-LIKE EFFECTS.
+         - Skin must have visible natural pores, subtle organic imperfections, and realistic subsurface scattering.
+         - Hair must have individual realistic strands with natural light diffraction.
+         - Ensure natural "optical" depth of field (bokeh) that follows laws of physics, not just a digital blur.
+         - Avoid over-saturation. Colors must be natural, organic, and professional.
+      
+      2. MOUTH & TEETH CONTROL: 
          - ${mouthControl}
       
-      2. HEAD & FACE ORIENTATION (MANDATORY): 
+      3. HEAD & FACE ORIENTATION: 
          - ${getPosePrompt()}
-         - Re-orient the head and body as requested while maintaining facial identity.
+         - Re-orient the head and body as requested while maintaining 100% facial identity.
       
-      3. ARM & HAND POSTURE (STRICT): 
+      4. LIGHTING & ATMOSPHERE:
+         - ${lightingPrompt}
+         - Lighting must look physical and organic, originating from studio light boxes or natural windows.
+         - Contrast should be realistic, avoiding the flat "AI HDR" look.
+      
+      5. ARM & HAND POSTURE (STRICT): 
          - ABSOLUTELY NO HANDS, PHONES, OR GESTURES.
          - Remove any hands visible in the frame, including hands holding phones, making signs (like peace signs), or touching the face.
          - The subject's arms MUST be in a natural, professional downward position at their sides (out of frame or resting naturally).
          - The shoulders should follow the requested orientation, but the arms must be relaxed and down.
       
-      4. IDENTITY & EXPRESSION (HIGHEST PRIORITY): 
+      6. IDENTITY & EXPRESSION (HIGHEST PRIORITY): 
          - Maintain 100% anatomical facial likeness, bone structure, and unique features from the source image.
+         - GROOMING INTEGRITY: The facial hair state (clean-shaven, stubble, beard, or mustache) MUST match the source photo exactly. Do NOT add facial hair if the subject is clean-shaven.
+         - HAIR STYLE (HEAD): Maintain the subject's original hair style and color from the source photo, but apply professional grooming to ensure it looks neat, tidy, and well-maintained for a premium portrait. No messy or stray hairs.
          - The person in the generated image must be UNMISTAKABLY the same person as in the source photo.
          - ${getBeautyPrompt()}
       
@@ -297,69 +339,120 @@ export class GeminiService {
          - Replace the background with: ${backgroundPrompts[settings.background]}
          - Replace the clothing with: ${getClothingPrompt()}
       
-      6. COMPOSITION & QUALITY: 3:4 Vertical framing. ${settings.wardrobe === Wardrobe.ALL ? 'Generate a 2x2 grid collage of 4 distinct professional outfits.' : settings.background === BackgroundStyle.ALL ? 'Generate a 2x2 grid collage of 4 distinct professional backgrounds.' : (settings.bodyPose === BodyPose.ZOOM_VIEW || settings.bodyPose === BodyPose.CLOSE_UP ? 'Tight head and shoulders professional studio portrait. The bottom of the frame MUST crop just below the shoulders/upper-chest (red line framing).' : settings.bodyPose === BodyPose.THREE_QUARTER ? 'Three-quarter length professional studio portrait. The bottom of the frame MUST crop at the mid-thigh or knee level (green line framing).' : 'Medium shot (waist-up) professional studio portrait. The bottom of the frame MUST crop at the mid-torso or waist level (blue line framing), showing the full torso and shoulders clearly.')} This specific framing is MANDATORY for the selected pose. Maintain significant headroom (empty space) above the top of the head. Zeiss 85mm rendering with soft background falloff. Medium format camera aesthetic (Phase One XF quality).
+      6. COMPOSITION & STYLING (MANDATORY): 
+         - 3:4 Vertical Aspect Ratio.
+         - ${settings.wardrobe === Wardrobe.ALL ? 'Generate a 2x2 grid collage of the same person in 4 distinct professional outfits.' : settings.background === BackgroundStyle.ALL ? 'Generate a 2x2 grid collage of the same person in 4 distinct professional backgrounds.' : 
+           (settings.bodyPose === BodyPose.ZOOM_VIEW || settings.bodyPose === BodyPose.CLOSE_UP) ? 'ZOOM HEADSHOT: Focus strictly on the face. The entire head, inclusive of all hair, MUST be fully visible. The bottom of the frame MUST crop at the upper shoulders. Ensure significant headroom (empty space) above the hair.' : 
+           (settings.bodyPose === BodyPose.FULL_FRONT || settings.bodyPose === BodyPose.SIDE_FRONT || settings.bodyPose === BodyPose.AUTO) ? 'HEAD-AND-SHOULDERS: The bottom of the frame MUST crop exactly at the upper chest level. ABSOLUTELY NO WAIST OR HANDS.' :
+           settings.bodyPose === BodyPose.THREE_QUARTER ? 'THREE-QUARTER LENGTH: The bottom of the frame MUST crop at the mid-thigh/knee level.' : 
+           'Standard professional headshot framing.'}
+         - HEADROOM: Always maintain 10-15% of empty space (headroom) above the top of the hair. NEVER cut off the top of the head.
+         - NO DISTRACTIONS: The frame must contain ONLY the person and the studio background. No furniture, microphones, or other humans.
+         - OPTICS: Zeiss 85mm f/1.2 lens rendering (shallow depth of field with creamy bokeh). Professional medium-format camera quality (Phase One 150MP aesthetic).
       
-      7. EXTREME DETAIL & CLARITY (MANDATORY): 
-         - ${settings.smoothing > 30 ? 'Clean, polished skin appearance with natural luminosity.' : 'Lifelike skin with visible fine pores, ultra-realistic micro-textures, and natural skin translucency.'}
-         - Sharp focus on the eyes with vibrant, elegant catchlights.
-         - High-resolution fabric textures in clothing (wool, silk, cotton).
-         - Professional color grading with natural, healthy skin tones. Avoid any unnatural skin whitening, artificial color shifts, or oversaturation. The skin tone must be 100% natural and consistent with the source image, but enhanced with a professional studio-lit glow and natural subsurface scattering. Ensure the face color and skin tone are perfectly matched to the subject's original complexion with a high-end, professional finish.
-         - NO airbrushing unless specified by smoothing levels.
-         - The final output must have the clarity and detailing of a high-end 8k professional studio photograph.
+      7. PHOTOGRAPHIC REALISM & TEXTURE (CRITICAL): 
+         - This is a high-end commercial photograph, NOT an AI-generated artwork.
+         - AVOID ANY ARTIFICIAL GLOSS, PLASTIC TEXTURES, OR UNNATURAL SYMMETRY.
+         - The skin MUST have highly detailed, realistic texture: visible pores, fine hair follicles, natural micro-imperfections, and realistic skin translucency.
+         - NO "GLOWY" OR RADIANT AI EFFECTS that look synthetic.
+         - Use natural, directional studio lighting that creates soft, realistic shadows on the face and neck.
+         - The overall aesthetic must be that of a RAW photograph captured on a professional medium-format camera, with no post-processing artifacts (NO chromatic aberration, NO blur unless DOF).
+         - Color accuracy is paramount. Maintain the exact skin tone and eye color from the source, but with premium professional lighting.
+         - HAIR DETAIL: Strands should be distinct but neat. Avoid the "helmet hair" look.
       
-      8. NEGATIVE CONSTRAINTS (STRICT):
-         - NO SAD, DEPRESSED, OR OVERLY SERIOUS EXPRESSIONS.
-         - NO DULL, FLAT, OR UNDEREXPOSED LIGHTING.
-         - NO WAXY, PLASTIC, OR ARTIFICIALLY SMOOTHED SKIN.
-         - NO EXAGGERATED GRINS OR OVERLY WIDE MOUTHS.
-         - NO DISTORTED TEETH.
-         - NO OPEN MOUTHS. NO PARTED LIPS (unless specified by smile settings).
-         - NO HANDS, FINGERS, OR GESTURES.
-         - NO PHONES OR ACCESSORIES.
-         - NO GLASSES (unless in source).
+      8. EXTREME DETAIL & CLARITY (MANDATORY): 
+         - ${settings.smoothing > 30 ? 'Clean, polished skin appearance with natural luminosity.' : 'Hyper-realistic skin with detailed texture, micro-pores, and natural moisture levels.'}
+         - Sharp focus on the pupils with natural catchlights (no white circular halos).
+         - Realistic fabric weave in the clothing.
+         - Professional color grading with a neutral, high-end commercial palette. Keep skin tones warm and healthy but grounded in reality.
+      
+      ${isStudio ? `
+      9. PREMIUM STUDIO UPGRADE (MASTERCLASS FIDELITY):
+         - Use Ultra-High Dynamic Range (UHDR) lighting simulation.
+         - Emulate the optical characteristics of a medium-format Hasselblad H6D-400c.
+         - Skin sub-surface scattering must be perfect, showing depth and organic warmth.
+         - Every single pore, fine hair, and fabric thread must be rendered with hyper-clarity.
+         - The eyes must have complex iris textures and realistic fluid reflections.
+         - Overall sharpness should be increased while maintaining a smooth, non-digital aesthetic.
+      ` : ""}
+      
+      9. NEGATIVE CONSTRAINTS (STRICT - ABSOLUTELY NO EXCEPTIONS):
+         - NO WAXY SKIN. NO PLASTIC TEXTURE. NO CARTOONISH FEATURES.
+         - NO UNNATURAL EYE SHINE (AI HALOS). NO OVER-SATURATED COLORS.
+         - NO ADDED FACIAL HAIR. Do NOT add a beard, mustache, or stubble if the subject is clean-shaven.
+         - NO REPETITIVE PATTERNS. NO MATH-PERFECT SYMMETRY.
          - NO DISTORTED FACIAL FEATURES.
          - NO BLURRY OR LOW-RESOLUTION OUTPUT.
     `;
 
     try {
       const startTime = Date.now();
-      console.log(`>>> Starting Gemini Image Generation (${primaryModel})...`, { isThumbnail, highRes, seed });
+      console.log(`>>> Starting Gemini Image Generation (${modelToUse})...`, { isThumbnail, highRes, seed });
       
       const [header, data] = base64Image.split(',');
       const mimeType = header.match(/:(.*?);/)?.[1] || 'image/jpeg';
       
       const executeGeneration = async (model: string) => {
-        const config: any = {
-          imageConfig: { 
-            aspectRatio: "3:4"
-          }
+        const generationConfig: any = {
+          temperature: 0.4,
+          topP: 0.8
         };
+        
+        if (model.includes('image')) {
+          // DO NOT set responseMimeType for image models as per skill
+          
+          // Only gemini-2.5+ and 3.x models support imageSize config
+          const supportsSize = model.includes('3.') || model.includes('2.5');
+          
+          generationConfig.imageConfig = {
+            aspectRatio: "3:4"
+          };
 
-        if (model === primaryModel) {
-          config.imageConfig.imageSize = isThumbnail ? "512px" : (highRes ? "2K" : "1K");
+          if (supportsSize) {
+            // Use 4K for studio, 2K for HD, 1K for high-res preview, 512px for thumb
+            generationConfig.imageConfig.imageSize = isStudio ? "4K" : (highRes ? "2K" : "1K");
+            if (isThumbnail) generationConfig.imageConfig.imageSize = "512px";
+          }
         }
 
-        return await ai.models.generateContent({
-          model: model,
-          contents: {
+        try {
+          const contents = [{
+            role: 'user',
             parts: [{ inlineData: { data, mimeType } }, { text: prompt }]
-          },
-          config
-        });
+          }];
+          // Use server proxy to pick up secrets and avoid quota sharing issues
+          const res = await axios.post('/api/gemini-proxy', {
+            model,
+            contents,
+            config: generationConfig,
+            usePremiumKey: highRes // Only use premium key for HD studio results
+          }, { timeout: 240000 }); // Increase timeout for images
+          return res.data;
+        } catch (serverErr: any) {
+          console.error("Gemini proxy call failed:", serverErr.response?.data || serverErr.message);
+          throw serverErr;
+        }
       };
 
-      let response: GenerateContentResponse;
+      let response: any;
       try {
-        // Try primary model with retries
-        response = await this.withRetry(() => executeGeneration(primaryModel));
+        // Try selected model with retries
+        response = await this.withRetry(() => executeGeneration(modelToUse));
       } catch (primaryError: any) {
-        const status = primaryError?.status || primaryError?.code;
-        const errMsg = primaryError?.message || '';
-        // If primary model is unavailable (503), overloaded (429), or unauthorized (403/not found), try fallback model
-        if (status === 503 || status === 429 || status === 403 || errMsg.includes('demand') || errMsg.includes('not found') || errMsg.includes('permission denied')) {
-          console.warn(`Primary model (${primaryModel}) failed with ${status || errMsg}. Attempting fallback to ${fallbackModel}...`);
-          // Try fallback model with its own retries
-          response = await this.withRetry(() => executeGeneration(fallbackModel));
+        const status = primaryError?.status || primaryError?.code || primaryError?.response?.status;
+        const errMsg = primaryError?.message || (primaryError as any)?.response?.data?.error || '';
+        
+        console.warn(`Primary model (${modelToUse}) failed. Status: ${status}, Message: ${errMsg}`);
+
+        // If primary model is already exhausted or overloaded, try fallback immediately
+        if (status === 429 || status === 503 || errMsg.includes('quota') || errMsg.includes('limit') || errMsg.includes('demand')) {
+          console.warn(`Attempting fallback to ${fallbackModel} due to primary model exhaustion...`);
+          try {
+            response = await this.withRetry(() => executeGeneration(fallbackModel));
+          } catch (fallbackError: any) {
+            console.error("Fallback model also failed:", fallbackError);
+            throw primaryError; // Re-throw primary error if both failed
+          }
         } else {
           throw primaryError;
         }
@@ -368,11 +461,16 @@ export class GeminiService {
       const duration = (Date.now() - startTime) / 1000;
       console.log(`>>> Gemini API call completed in ${duration.toFixed(2)}s`);
 
-      for (const cand of response.candidates || []) {
+      // Standardize response candidate extraction
+      const resData = response as any;
+      const candidates = resData.candidates || [];
+      
+      for (const cand of candidates) {
         if (cand.finishReason === 'SAFETY') {
           throw new Error("The image could not be generated due to safety filters. Please try a different photo.");
         }
-        for (const part of cand.content.parts) {
+        const parts = cand.content?.parts || [];
+        for (const part of parts) {
           if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
         }
       }
