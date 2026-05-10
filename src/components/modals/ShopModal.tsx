@@ -24,24 +24,24 @@ export const ShopModal: React.FC<ShopModalProps> = ({
     { 
       id: 'micro', 
       name: 'Micro Pack', 
-      tokens: 10, 
+      tokens: 20, 
       priceInr: 199, 
-      features: ['2 HD Headshots', '4 Preview Headshots', 'No watermarks', 'Priority processing'] 
+      features: ['4 HD Headshots', '10 Preview Headshots', 'No watermarks', 'Priority processing'] 
     },
     { 
       id: 'standard', 
       name: 'Standard Suite', 
-      tokens: 50, 
+      tokens: 80, 
       priceInr: 699, 
       isPopular: true, 
-      features: ['10 HD Headshots', '25 Preview Headshots', 'Priority processing', 'All premium styles', 'Commercial usage rights'] 
+      features: ['16 HD Headshots', '30 Preview Headshots', 'Priority processing', 'All premium styles', 'Commercial usage rights'] 
     },
     { 
       id: 'enterprise', 
       name: 'Power Enterprise', 
-      tokens: 125, 
+      tokens: 180, 
       priceInr: 1299, 
-      features: ['25 HD Headshots', '75 Preview Headshots', 'Custom Brand Guidelines', 'Dedicated Support', 'Priority AI Rendering Queue'] 
+      features: ['36 HD Headshots', '100 Preview Headshots', 'Custom Brand Guidelines', 'Dedicated Support', 'Priority AI Rendering Queue'] 
     },
   ];
 
