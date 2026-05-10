@@ -45,7 +45,7 @@ const FALLBACK_TOOLS: AITool[] = [
     id: "gts",
     name: "GraphToSheets",
     description: "Convert any chart or graph image into structured Excel data instantly.",
-    url: "https://graphtosheet.vercel.app",
+    url: "https://graphtosheets.aiwithshyam.com/",
     icon: "FileSpreadsheet",
     color: "#00b87c"
   },
@@ -61,7 +61,7 @@ const FALLBACK_TOOLS: AITool[] = [
     id: "geonex",
     name: "GeoNex AI",
     description: "Extract location intelligence and spatial data from maps and satellite imagery.",
-    url: "https://geonex.ai",
+    url: "https://mygeonexus.vercel.app/",
     icon: "MapPin",
     color: "#8b5cf6"
   },
@@ -69,7 +69,7 @@ const FALLBACK_TOOLS: AITool[] = [
     id: "sharper",
     name: "Image Sharper",
     description: "Crystal clear enhancement and 4K upscaling for low-resolution images.",
-    url: "https://imagesharper.ai",
+    url: "#",
     icon: "image",
     color: "#ec4899"
   }
@@ -112,7 +112,8 @@ export const ExploreMoreTools: React.FC = () => {
           viewport={{ once: true, margin: "-50px" }}
           transition={{ duration: 0.6, delay: idx * 0.1, ease: [0.21, 0.47, 0.32, 0.98] }}
           whileHover={{ y: -8 }}
-          className="group block bg-white dark:bg-slate-900 rounded-[32px] p-8 border border-slate-100 dark:border-slate-800 shadow-sm hover:shadow-2xl hover:shadow-emerald-500/10 transition-all duration-500"
+          onClick={tool.id === 'sharper' ? (e) => e.preventDefault() : undefined}
+          className={`group block bg-white dark:bg-slate-900 rounded-[32px] p-8 border border-slate-100 dark:border-slate-800 shadow-sm hover:shadow-2xl hover:shadow-emerald-500/10 transition-all duration-500 ${tool.id === 'sharper' ? 'cursor-default' : ''}`}
         >
           <div className="flex flex-col h-full">
             <div className="flex items-start justify-between mb-8">
@@ -137,8 +138,14 @@ export const ExploreMoreTools: React.FC = () => {
               <span className="text-[11px] font-bold text-slate-300 dark:text-slate-600 uppercase tracking-[0.2em]">
                 ECOSYSTEM
               </span>
-              <div className="flex items-center gap-1.5 text-[11px] font-black text-[#00b87c] uppercase tracking-widest group-hover:gap-2.5 transition-all">
-                Live <ArrowRight className="w-3.5 h-3.5" />
+              <div className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-widest transition-all">
+                {tool.id === 'sharper' ? (
+                  <span className="text-slate-400">Live Soon...</span>
+                ) : (
+                  <span className="text-[#00b87c] group-hover:gap-2.5 flex items-center gap-1.5 transition-all">
+                    Live <ArrowRight className="w-3.5 h-3.5" />
+                  </span>
+                )}
               </div>
             </div>
           </div>
