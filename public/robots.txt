@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://headshotstudiopro.com/sitemap.xml
