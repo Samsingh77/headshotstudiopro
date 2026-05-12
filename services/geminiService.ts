@@ -56,7 +56,7 @@ export class GeminiService {
     try {
       const [header, data] = base64Image.split(',');
       const mimeType = header.match(/:(.*?);/)?.[1] || 'image/jpeg';
-      const model = 'gemini-3-flash-preview'; // Use the latest stable model for verification
+      const model = 'gemini-3.1-flash-lite'; // Use the latest stable model for verification
       const contents = [
         {
           role: 'user',
@@ -117,9 +117,9 @@ export class GeminiService {
   ): Promise<string> {
     // Use specialized high-quality image models
     const primaryModel = 'gemini-2.5-flash-image'; // Essential Preview
-    const hdModel = 'gemini-3.1-flash-image-preview'; // High Definition 
-    const studioModel = 'gemini-3-pro-image-preview'; // Masterclass / Studio Quality
-    const fallbackModel = 'gemini-3.1-flash-image-preview'; 
+    const hdModel = 'gemini-3.1-flash-image'; // High Definition 
+    const studioModel = 'gemini-3-pro-image'; // Masterclass / Studio Quality
+    const fallbackModel = 'gemini-3.1-flash-image'; 
     
     // Choose the model based on requested quality
     let modelToUse = isStudio ? studioModel : (highRes ? hdModel : primaryModel);
