@@ -366,7 +366,7 @@ app.post("/api/gemini-proxy", geminiLimiter, async (req, res) => {
     }
 
     // Default to a known stable model if none provided
-    const model = modelName || 'gemini-3-flash-preview';
+    const model = modelName || 'gemini-3.1-flash-lite';
     const maskedKey = activeKey.substring(0, 6) + "..." + activeKey.substring(activeKey.length - 4);
     
     // Safety check for common format errors
