@@ -27,45 +27,7 @@ const PORT = 3000;
 // Trust proxy for rate limiting behind load balancers/nginx
 app.set("trust proxy", 1);
 
-// Export app for Vercel
-export default app;
-
-const getEnvVar = (name: string, fallback: string = ''): string => {
-  const val = process.env[name] || fallback;
-  if (val === 'undefined' || val === 'null' || !val) return fallback;
-  const trimmed = val.trim();
-  // Filter out cases where the value is just the name of the variable (common placeholder mistake)
-  // Also filter out values that start with "MY_G" or "GEMI" as they are likely placeholders
-  if (trimmed === 'GEMINI_API_KEY' || trimmed === 'MY_GEMINI_KEY' || trimmed === 'API_KEY' || 
-      trimmed === 'YOUR_GEMINI_API_KEY' || trimmed.startsWith('MY_G') || trimmed.startsWith('GEMI_')) return fallback;
-  return trimmed;
-};
-
-let razorpay: any;
-let supabase: any = null;
-let resend: Resend | null = null;
-
-// Initialize Supabase variables early for health check
-let supabaseUrl = getEnvVar('SUPABASE_URL', getEnvVar('VITE_SUPABASE_URL', ''));
-if (supabaseUrl && !supabaseUrl.startsWith('http')) {
-  supabaseUrl = `https://${supabaseUrl}.supabase.co`;
-}
-const supabaseServiceKey = getEnvVar('SUPABASE_SERVICE_ROLE_KEY', getEnvVar('SUPABASE_ANON_KEY', getEnvVar('VITE_SUPABASE_ANON_KEY', '')));
-
-// Global Error Handlers
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-});
-
-process.on('uncaughtException', (err) => {
-  console.error('Uncaught Exception thrown:', err);
-});
-
-// Middleware
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-
-// CORS Configuration
+// Middleware - Moved up for early execution
 app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (like mobile apps or curl)
@@ -82,7 +44,7 @@ app.use(cors({
       process.env.SHARED_APP_URL
     ].filter(Boolean);
 
-    if (allowedOrigins.includes(origin) || origin.endsWith('.run.app') || process.env.NODE_ENV !== 'production') {
+    if (allowedOrigins.includes(origin) || origin.endsWith('.run.app') || origin.endsWith('.vercel.app') || process.env.NODE_ENV !== 'production') {
       callback(null, true);
     } else {
       console.warn(`>>> CORS blocked request from origin: ${origin}`);
@@ -91,6 +53,39 @@ app.use(cors({
   },
   credentials: true
 }));
+
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Export app for Vercel
+export default app;
+
+const getEnvVar = (name: string, fallback: string = ''): string => {
+  const val = process.env[name] || fallback;
+  if (val === 'undefined' || val === 'null' || !val) return fallback;
+  const trimmed = val.trim();
+  if (trimmed === 'GEMINI_API_KEY' || trimmed === 'MY_GEMINI_KEY' || trimmed === 'API_KEY' || 
+      trimmed === 'YOUR_GEMINI_API_KEY' || trimmed.startsWith('MY_G') || trimmed.startsWith('GEMI_')) return fallback;
+  return trimmed;
+};
+
+let razorpay: any;
+let supabase: any = null;
+let resend: Resend | null = null;
+
+let supabaseUrl = getEnvVar('SUPABASE_URL', getEnvVar('VITE_SUPABASE_URL', ''));
+if (supabaseUrl && !supabaseUrl.startsWith('http')) {
+  supabaseUrl = `https://${supabaseUrl}.supabase.co`;
+}
+const supabaseServiceKey = getEnvVar('SUPABASE_SERVICE_ROLE_KEY', getEnvVar('SUPABASE_ANON_KEY', getEnvVar('VITE_SUPABASE_ANON_KEY', '')));
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception thrown:', err);
+});
 
 // Request Logger
 app.use((req, res, next) => {
@@ -317,7 +312,7 @@ const geminiLimiter = rateLimit({
   message: { error: "Too many AI generation requests. Please try again in 15 minutes." }
 });
 
-app.post("/api/gemini-proxy", geminiLimiter, async (req, res) => {
+app.post("/api/gemini-proxy", async (req, res) => {
   try {
     const { model: modelName, contents, config, usePremiumKey } = req.body;
 
@@ -381,42 +376,63 @@ app.post("/api/gemini-proxy", geminiLimiter, async (req, res) => {
 
     console.log(`>>> Server Proxy: Calling ${model} [${keySource}]`);
     
-    // Construct the payload for the REST API
-    // The contents from req.body should be an array of Content objects
-    // Example: [{ role: 'user', parts: [...] }]
     const payload: any = {
       contents: Array.isArray(contents) ? contents : [contents]
     };
 
     if (config) {
-      // The REST API expects generationConfig
       payload.generationConfig = { ...config };
-      
-      // Clean up config for REST API if it came from the SDK format
       if (payload.generationConfig.stopSequences && payload.generationConfig.stopSequences.length === 0) {
         delete payload.generationConfig.stopSequences;
       }
     }
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${activeKey}`;
-    
-    const response = await axios.post(url, payload, { 
-      timeout: 180000,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    // Try multiple API versions as transition out of preview might change requirements
+    const versions = ['v1beta', 'v1'];
+    let lastError: any = null;
 
-    res.json(response.data);
-  } catch (error: any) {
-    const errorData = error.response?.data?.error || error.response?.data || {};
-    const errorMessage = errorData.message || error.message || "Gemini operation failed";
-    const statusCode = error.response?.status || 500;
+    for (const apiVersion of versions) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/${apiVersion}/models/${model}:generateContent?key=${activeKey}`;
+        console.log(`>>> Attempting Gemini call with ${apiVersion}...`);
+        
+        const response = await axios.post(url, payload, { 
+          timeout: 200000, // Increase for images
+          headers: { 'Content-Type': 'application/json' }
+        });
+        
+        console.log(`>>> Gemini call successful with ${apiVersion}`);
+        return res.json(response.data);
+      } catch (err: any) {
+        lastError = err;
+        const status = err.response?.status;
+        console.warn(`>>> API ${apiVersion} failed with status ${status}`);
+        
+        // If it's a 405 (Method Not Allowed) or 404, we definitely want to try the next version
+        if (status === 405 || status === 404) continue;
+        
+        // Otherwise it's likely a real error (quota, safety, etc) so we should stop and report it
+        break;
+      }
+    }
+
+    // If we get here, all attempts failed
+    const errorData = lastError.response?.data?.error || lastError.response?.data || {};
+    const errorMessage = errorData.message || lastError.message || "Gemini operation failed after multiple endpoint attempts";
+    const statusCode = lastError.response?.status || 500;
     
-    console.error(">>> Gemini Proxy Error Details:", JSON.stringify(errorData));
+    console.error(">>> Gemini Proxy Fatal error:", JSON.stringify(errorData));
     res.status(statusCode).json({ 
       error: errorMessage,
       status: statusCode,
-      details: errorData
+      details: errorData,
+      model_attempted: model,
+      apiVersion: versions[versions.length - 1]
     });
+
+  } catch (error: any) {
+    console.error(">>> Gemini Proxy Internal error:", error.message);
+    res.status(500).json({ error: error.message });
   }
 });
 
